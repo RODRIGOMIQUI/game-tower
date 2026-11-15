@@ -1,0 +1,28 @@
+id,nome,categoria,estrela,largura_col,altura_andares,onde,custo,custo_extra,manutencao_tri,receita_tipo,receita_valor,capacidade,populacao,ruido_emite,sensivel_ruido,observacao
+piso,Piso,estrutura,1,1,1,acima,500,0,0,nenhuma,0,0,0,0,nao,custo por coluna
+escavacao,Escavação,estrutura,1,1,1,subsolo,2000,0,0,nenhuma,0,0,0,0,nao,custo por coluna; libera célula de subsolo
+lobby,Lobby,estrutura,1,1,1,terreo,3000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; só no térreo
+sky_lobby,Sky lobby,estrutura,3,1,1,acima,4000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; andar >= 15
+escada,Escada,transito,1,8,1,qualquer,5000,0,0,nenhuma,0,0,0,0,nao,liga 1 andar ao de cima; encadeável
+escada_rolante,Escada rolante,transito,3,10,1,qualquer,20000,0,1000,nenhuma,0,0,0,1,nao,liga 1 andar ao de cima; encadeável
+elevador_padrao,Elevador padrão,transito,1,4,30,qualquer,150000,50000,8000,nenhuma,0,15,0,0,nao,custo_extra = por carro (máx 8); +2000/tri por carro
+elevador_expresso,Elevador expresso,transito,3,6,100,qualquer,400000,100000,20000,nenhuma,0,25,0,0,nao,para só em lobbies e subsolos; +4000/tri por carro
+elevador_servico,Elevador de serviço,transito,2,4,30,qualquer,100000,40000,6000,nenhuma,0,10,0,0,nao,só equipe; +1500/tri por carro
+escritorio,Escritório,trabalho,1,9,1,acima,40000,0,0,aluguel_tri,10000,6,6,2,nao,
+apartamento,Apartamento,moradia,1,16,1,acima,80000,0,0,venda,150000,3,3,0,sim,revenda com 30% de desconto se o morador sair
+hotel_simples,Quarto simples,hotel,2,4,1,acima,20000,0,0,diaria,2500,1,1,0,sim,precisa de limpeza diária
+hotel_duplo,Quarto duplo,hotel,3,6,1,acima,50000,0,0,diaria,4500,2,2,0,sim,precisa de limpeza diária
+hotel_suite,Suíte,hotel,3,10,1,acima,100000,0,0,diaria,10000,2,2,0,sim,atrai VIP
+lanchonete,Lanchonete,comida,1,16,1,qualquer,100000,0,0,por_cliente,40,30,0,3,nao,capacidade = lugares
+restaurante,Restaurante,comida,3,24,1,qualquer,200000,0,0,por_cliente,100,40,0,2,nao,almoço e jantar
+loja,Loja,comercio,3,12,1,qualquer,100000,0,0,aluguel_tri,18000,15,0,2,nao,atrai visitantes
+cinema,Cinema,lazer,3,30,2,qualquer,500000,0,10000,por_cliente,80,120,0,4,nao,3 sessões/dia
+salao_eventos,Salão de eventos,lazer,4,40,2,qualquer,800000,0,15000,por_cliente,250,200,0,4,nao,eventos à noite e no fim de semana
+limpeza,Limpeza,servico,2,15,1,qualquer,50000,0,10000,nenhuma,0,6,0,1,nao,6 camareiras; atende até 20 quartos
+seguranca,Segurança,servico,2,16,1,qualquer,100000,0,20000,nenhuma,0,6,0,1,nao,brigada de incêndio; requisito ★3
+centro_medico,Centro médico,servico,3,26,1,qualquer,300000,0,30000,nenhuma,0,10,0,1,nao,requisito ★4
+reciclagem,Reciclagem,servico,3,25,2,subsolo,400000,0,25000,nenhuma,0,0,0,5,nao,reduz sujeira; obrigatória acima de 3000 de população
+rampa_estacionamento,Rampa de estacionamento,acesso,3,15,1,subsolo,50000,0,0,nenhuma,0,0,0,1,nao,uma por andar de subsolo usado
+estacionamento,Estacionamento (10 vagas),acesso,3,30,1,subsolo,60000,0,2000,por_vaga_dia,150,10,0,1,nao,porta de entrada alternativa
+metro,Estação de metrô,acesso,4,30,3,subsolo,1000000,0,50000,nenhuma,0,0,0,3,nao,traz funcionários e visitantes; requisito ★5
+coroa,Coroa da Torre,marco,5,40,3,topo,3000000,0,40000,por_cliente,150,300,0,1,nao,ocupa os andares 98–100; observatório; condição da Lendária

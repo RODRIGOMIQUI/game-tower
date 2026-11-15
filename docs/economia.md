@@ -1,0 +1,114 @@
+# GameTower — Economia e Balanceamento (v0.1)
+
+> Tabela de unidades: [dados/unidades.csv](dados/unidades.csv).
+> Na Fase 1 o CSV vira `packages/data/unidades.json`, a fonte única usada pelo jogo.
+> Todos os valores abaixo são **iniciais** e serão ajustados com a simulação headless.
+
+## 1. Regras gerais
+
+- Moeda: `$`, valores inteiros.
+- Caixa inicial (carreira): **$ 2.000.000**.
+- Trimestre = 4 dias de jogo (3 úteis + 1 fim de semana).
+- **Fechamento do trimestre** (00:00 do 1º dia): cobra manutenção, credita
+  aluguéis, gera relatório e autosave.
+- Diárias, receita por cliente e estacionamento entram **na hora** em que
+  acontecem.
+- Venda de apartamento entra quando o comprador se muda.
+
+## 2. Fórmulas
+
+### Receita por unidade
+```
+aluguel_tri   = receita_valor × mult_preço × (ocupada ? 1 : 0)
+diaria        = receita_valor × mult_preço × noites_ocupadas
+por_cliente   = receita_valor × mult_preço × clientes_atendidos
+venda         = receita_valor × mult_preço            (uma vez)
+por_vaga_dia  = receita_valor × vagas_usadas_no_dia
+```
+
+### Níveis de preço
+| Nível | Multiplicador | Efeito na satisfação |
+|---|---|---|
+| Baixo | 0,8 | +10 |
+| Normal | 1,0 | 0 |
+| Alto | 1,25 | −10 |
+| Premium | 1,6 | −20 |
+
+O efeito é somado à satisfação da unidade (GDD §7.1), então preços altos só
+se sustentam em unidades bem servidas.
+
+### Manutenção
+```
+manutencao_tri = Σ unidades.manutencao_tri + Σ carros × custo_carro_tri
+```
+Custo por carro: padrão $2.000, expresso $4.000, serviço $1.500.
+
+### Demolição
+- Estrutura (piso, lobby, escavação): reembolso 0%.
+- Unidade vazia: reembolso 25% do custo.
+- Unidade ocupada: não pode ser demolida sem antes despejar o ocupante
+  (−5 de satisfação em todo o andar por 1 trimestre).
+
+## 3. Retorno esperado (preço normal)
+
+Em trimestres até pagar o custo de construção, numa ocupação "saudável":
+
+| Unidade | Custo | Receita/tri estimada | Retorno (tri) | Papel no design |
+|---|---|---|---|---|
+| Escritório | 40.000 | 10.000 | 4 | renda estável, cria pico de tráfego |
+| Apartamento | 80.000 | 150.000 (única) | imediato | caixa rápido no começo, sem renda recorrente |
+| Quarto simples | 20.000 | ~7.000 (70% ocupação) | ~3 | bom, mas exige limpeza e gera risco de pragas |
+| Suíte | 100.000 | ~24.000 (60%) | ~4 | caro; puxa o VIP |
+| Lanchonete | 100.000 | ~24.000 (150 clientes/dia) | ~4 | resolve o almoço; dá bônus de serviço |
+| Restaurante | 200.000 | ~40.000 | ~5 | almoço e jantar; atrai visitantes |
+| Loja | 100.000 | 18.000 | ~5,5 | atrai visitantes |
+| Cinema | 500.000 | ~58.000 − 10.000 | ~10 | âncora de lazer; vale pelos visitantes |
+| Salão de eventos | 800.000 | ~150.000 − 15.000 | ~6 | picos enormes à noite: teste de transporte |
+| Estacionamento (10) | 60.000 | ~6.000 − 2.000 | ~15 | vale como porta de entrada, não pela renda |
+
+**Intenção:** nenhuma unidade sozinha "quebra" o jogo. Apartamentos dão caixa
+cedo, mas não renda recorrente. Escritórios dão renda, mas sobrecarregam os
+elevadores no pico. Hotel rende bem, mas exige serviço.
+
+## 4. Curva de progressão alvo
+
+Ritmo-alvo para um jogador mediano no modo carreira:
+
+| Marco | Tempo de jogo | Tempo real (1×–2×) |
+|---|---|---|
+| ★2 (250 pop.) | ~3 trimestres | 25–45 min |
+| ★3 (1.200) | ~ano 2 | 1,5–2,5 h |
+| ★4 (4.000) | ~ano 4 | 4–6 h |
+| ★5 (8.000) | ~ano 6 | 7–10 h |
+| Lendária (12.000) | ~ano 8 | 10–14 h |
+
+### Sanidade do começo do jogo
+Um começo "típico" com $2.000.000:
+
+| Item | Qtde | Custo |
+|---|---|---|
+| Lobby 60 colunas | 60 | 180.000 |
+| Pisos andares 2–6 (60 col) | 300 | 150.000 |
+| Elevador padrão + 2 carros | 1 | 250.000 |
+| Escritórios (6 por andar × 5) | 30 | 1.200.000 |
+| Lanchonete | 1 | 100.000 |
+| **Total** | | **1.880.000** |
+
+Resultado: 180 de população, cerca de $300.000/tri em aluguel, cerca de
+$12.000/tri de manutenção. O jogador recupera o caixa em ~6 trimestres, ou
+acelera vendendo alguns apartamentos. **★2 deve vir no 1º ano**, como
+planejado.
+
+## 5. Balanceamento: como vamos ajustar
+
+1. Todo número fica em `packages/data/*.json`, sem constantes mágicas no código.
+2. O **simulador headless** (`tools/sim-headless`) roda N anos com um
+   "bot construtor" scriptado e exporta CSV de caixa, população, estresse
+   médio e espera média por poço.
+3. Os critérios de alerta são estes:
+   - caixa nunca negativo no roteiro "típico";
+   - nenhuma unidade de renda recorrente com retorno < 2 trimestres
+     (a venda única de apartamento é a exceção intencional);
+   - espera média no pico da manhã entre 1 e 4 min num prédio "bem montado".
+4. Cada ajuste de valores vai num commit próprio, com o antes e depois do
+   CSV de simulação.
