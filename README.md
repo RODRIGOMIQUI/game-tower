@@ -11,7 +11,9 @@ Stack: TypeScript + PixiJS + Vite. Versão atual: **1.0.0-beta.1** ([CHANGELOG](
 3. Acelere o tempo, acompanhe a fila dos elevadores e adicione carros/poços.
 4. Cresça até as estrelas pedidas (barra ao lado das estrelas) e chegue à Lendária.
 
-**Instalar como aplicativo:** na versão publicada (`npm run build`), o Chrome/Edge
+**Jogar agora:** https://rodrigomiqui.github.io/game-tower/ (publicado automaticamente a cada push no `main`).
+
+**Instalar como aplicativo:** na versão publicada, o Chrome/Edge
 mostram "Instalar GameTower" na barra de endereço. Depois de aberto uma vez, o
 jogo funciona offline.
 
