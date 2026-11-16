@@ -4,7 +4,7 @@ import type { Categoria } from '../sim/dados';
 export const COR = {
   estrutura: 0x3b3f4a,
   estruturaClaro: 0x5a6070,
-  interiorVazio: 0x4a505c,
+  interiorVazio: 0x9ba1ad,
   lobby: 0xc9b48a,
   escavado: 0x5b4a3c,
   terra: 0x6b5442,
@@ -13,6 +13,14 @@ export const COR = {
   transito: 0xf2f2f2,
   alerta: 0xff5a3c,
   valido: 0x4cd964,
+  poco: 0x2e323b,
+  portaPoco: 0x6a7080,
+  carro: 0xf2f2f2,
+  carroCarga: 0xe3c25b,
+  degrau: 0xd8dbe2,
+  humorOk: 0x2b2b2b,
+  humorIrritado: 0xe36ba0,
+  humorFurioso: 0xe0393e,
 } as const;
 
 export const COR_CATEGORIA: Record<Categoria, number> = {

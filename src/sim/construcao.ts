@@ -2,7 +2,7 @@
 // As mesmas funções rodam na simulação (autoritativa) e no thread principal
 // (pré-visualização), garantindo que a prévia mostre exatamente o que vai acontecer.
 
-import { disponivelNaFase, ehEstrutura, tipo, type TipoUnidade } from './dados';
+import { disponivelNaFase, ehElevador, ehEstrutura, tipo, type TipoUnidade } from './dados';
 import {
   ANDAR_MAX,
   dentro,
@@ -80,9 +80,50 @@ export function planejarConstrucao(
   if (t.estrela > ctx.estrela && !ctx.ignorarEstrela) {
     return fecharPlano('construir', [], `Requer ${t.estrela}★`);
   }
-  return ehEstrutura(tipoId)
-    ? planejarEstrutura(m, t, x0, y0, x1, y1, ctx)
-    : planejarUnidades(m, t, x0, y0, x1, y1, ctx);
+  if (ehEstrutura(tipoId)) return planejarEstrutura(m, t, x0, y0, x1, y1, ctx);
+  if (ehElevador(tipoId)) return planejarElevador(m, t, x0, y0, y1, ctx);
+  return planejarUnidades(m, t, x0, y0, x1, y1, ctx);
+}
+
+/**
+ * Poço de elevador: arrasta-se na vertical para definir os andares atendidos.
+ * Custa o poço + 1 carro. Ver docs/gdd.md §6.
+ */
+function planejarElevador(m: Mundo, t: TipoUnidade, x: number, y0: number, y1: number, ctx: Contexto): Plano {
+  const [ya, yb] = intervalo(y0, y1);
+  const altura = yb - ya + 1;
+  const custo = t.custo + t.custo_extra;
+  const item: ItemPlano = {
+    tipo: t.id, x, y: ya, largura: t.largura_col, altura, estrutura: false, custo, ok: true,
+  };
+  if (altura < 2) item.motivo = 'Arraste na vertical para definir os andares';
+  else if (altura > t.altura_andares) item.motivo = `Alcance máximo: ${t.altura_andares} andares`;
+  else item.motivo = validarCelulasLivres(m, x, ya, t.largura_col, altura, true);
+  if (!item.motivo && custo > ctx.dinheiro) item.motivo = 'Dinheiro insuficiente';
+  item.ok = !item.motivo;
+  return fecharPlano('construir', [item]);
+}
+
+/** Verifica terreno, piso e espaço livre num retângulo. `aceitaLobby` vale para transporte. */
+function validarCelulasLivres(
+  m: Mundo,
+  x: number,
+  y: number,
+  largura: number,
+  altura: number,
+  aceitaLobby: boolean,
+): string | undefined {
+  const topo = y + altura - 1;
+  if (!dentro(x, y) || !dentro(x + largura - 1, topo)) return 'Fora do terreno';
+  for (let yy = y; yy <= topo; yy++) {
+    for (let xx = x; xx < x + largura; xx++) {
+      const e = m.est(xx, yy);
+      if (e === Est.Vazio) return 'Precisa de piso';
+      if (e === Est.Lobby && !aceitaLobby) return 'Não pode ficar no lobby';
+      if (m.uidEm(xx, yy)) return 'Espaço ocupado';
+    }
+  }
+  return undefined;
 }
 
 function planejarEstrutura(
@@ -230,13 +271,13 @@ function validarUnidade(m: Mundo, t: TipoUnidade, x: number, y: number): string 
     case 'qualquer':
       break;
   }
-  for (let yy = y; yy <= topo; yy++) {
-    for (let xx = x; xx < x + l; xx++) {
-      const e = m.est(xx, yy);
-      if (e === Est.Vazio) return 'Precisa de piso';
-      if (e === Est.Lobby) return 'Não pode ficar no lobby';
-      if (m.uidEm(xx, yy)) return 'Espaço ocupado';
-    }
+  const transito = t.categoria === 'transito';
+  const motivo = validarCelulasLivres(m, x, y, l, a, transito);
+  if (motivo) return motivo;
+  // Escadas ligam o andar y ao y+1: precisa haver piso em cima.
+  if (transito) {
+    if (topo + 1 > ANDAR_MAX) return 'Sem andar acima';
+    for (let xx = x; xx < x + l; xx++) if (m.est(xx, topo + 1) === Est.Vazio) return 'Precisa de piso no andar de cima';
   }
   return undefined;
 }

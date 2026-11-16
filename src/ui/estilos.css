@@ -41,6 +41,7 @@ html, body {
   display: flex; align-items: center; gap: 18px;
   padding: 6px 12px;
 }
+#hud > * { white-space: nowrap; }
 #hud .marca { font-weight: 700; letter-spacing: 0.02em; }
 #hud .marca span { color: var(--destaque); }
 #hud .valor { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -100,10 +101,38 @@ html, body {
 #status .ok { color: var(--ok); }
 #status .dica { margin-left: auto; color: var(--texto-fraco); font-family: var(--fonte); }
 
+/* ---- inspetor ---- */
+#inspetor {
+  position: fixed; top: 56px; right: 8px; width: 260px;
+  padding: 10px 12px;
+}
+#inspetor[hidden] { display: none; }
+#inspetor h2 { margin: 0; font-size: 15px; }
+.insp-topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.botao { padding: 4px 8px; border-color: var(--borda); }
+.botao:hover:not(:disabled) { background: var(--vidro-claro); }
+.botao:disabled { opacity: 0.4; cursor: not-allowed; }
+.botao.fechar { padding: 0 6px; }
+.kv { display: flex; justify-content: space-between; padding: 2px 0; }
+.kv span { color: var(--texto-fraco); }
+.kv b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.insp-acoes { display: flex; gap: 6px; margin: 10px 0 8px; }
+.insp-acoes .botao { flex: 1; }
+.insp-modo { display: flex; flex-direction: column; gap: 4px; color: var(--texto-fraco); font-size: 12px; }
+.insp-modo select {
+  font: inherit; color: var(--texto); background: var(--vidro-claro);
+  border: 1px solid var(--borda); border-radius: 6px; padding: 4px;
+}
+.alerta-acesso {
+  margin-bottom: 8px; padding: 6px 8px; border-radius: 6px;
+  background: rgba(255, 90, 60, 0.15); color: var(--erro); font-size: 12px;
+}
+.obs { margin: 10px 0 0; font-size: 11px; color: var(--texto-fraco); }
+
 /* ---- avisos (toasts) ---- */
 #avisos {
-  position: fixed; top: 56px; right: 8px; width: 300px;
-  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+  position: fixed; bottom: 48px; right: 8px; width: 300px;
+  display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none;
 }
 .aviso {
   padding: 8px 12px; border-left: 3px solid var(--ok);
@@ -113,6 +142,11 @@ html, body {
 .aviso.info { border-left-color: var(--destaque); }
 .aviso.saindo { opacity: 0; transition: opacity 0.4s; }
 @keyframes entrar { from { transform: translateX(16px); opacity: 0; } }
+
+@media (max-width: 1100px) {
+  #hud { gap: 12px; }
+  #hud .rotulo { display: none; }
+}
 
 @media (max-width: 720px) {
   #paleta { width: 170px; }

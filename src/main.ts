@@ -9,7 +9,8 @@ import { data, type Velocidade } from './sim/relogio';
 import type { Celula } from './render/camera';
 import { dinheiro } from './ui/formato';
 import { ATALHOS, DEMOLIR, Hud } from './ui/hud';
-import type { DaSim, EstadoResumo, ParaSim } from './worker/protocolo';
+import { Inspetor } from './ui/inspetor';
+import type { DaSim, Dinamico, EstadoResumo, ParaSim } from './worker/protocolo';
 
 const app = new Application();
 const raiz = document.getElementById('jogo')!;
@@ -30,11 +31,34 @@ let pan: { x: number; y: number } | null = null;
 let hover: Celula | null = null;
 let ultimaVelocidade: Velocidade = 1;
 let proximoId = 1;
+let selecionado = 0;
+let dinamico: Dinamico | null = null;
+let clique: { x: number; y: number } | null = null;
 
 const hud = new Hud({
   velocidade: (v) => mudarVelocidade(v),
   ferramenta: (id) => escolherFerramenta(id),
 });
+
+const inspetor = new Inspetor({
+  carros: (uid, delta) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'carros', uid, delta } }),
+  modo: (uid, modo) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'modo', uid, modo } }),
+  fechar: () => selecionar(0),
+});
+
+function selecionar(uid: number): void {
+  selecionado = uid;
+  atualizarInspetor();
+  atualizarFantasma();
+}
+
+function atualizarInspetor(): void {
+  const u = selecionado ? mundo.unidades.get(selecionado) ?? null : null;
+  if (!u) selecionado = 0;
+  inspetor.mostrar(u, dinamico?.pocos.find((p) => p.uid === selecionado), !!dinamico?.semAcesso.includes(selecionado));
+}
+
+app.ticker.add(() => cena.desenharDinamica(performance.now(), mundo));
 
 // ----------------------------------------------------------------- simulação
 worker.onmessage = (e: MessageEvent<DaSim>) => {
@@ -48,13 +72,20 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
     case 'mundo':
       mundo = new Mundo(msg.mundo);
       cena.desenharMundo(mundo);
+      atualizarInspetor();
       atualizarFantasma();
+      break;
+    case 'dinamico':
+      dinamico = msg;
+      cena.receberDinamica(msg, performance.now());
+      cena.desenharAlertas(mundo, msg.semAcesso);
+      if (selecionado) atualizarInspetor();
       break;
     case 'resultado': {
       const r = msg.resultado;
       if (!r.ok) hud.aviso(r.motivo ?? 'Não foi possível', 'erro');
       else {
-        const verbo = r.acao === 'construir' ? 'Construído' : 'Demolido';
+        const verbo = r.acao === 'construir' ? 'Construído' : r.acao === 'demolir' ? 'Demolido' : 'Elevador atualizado';
         const extra = r.motivo ? ` (parte falhou: ${r.motivo})` : '';
         hud.aviso(`${verbo}: ${r.feitos} · ${dinheiro(-r.custo)}${extra}`, r.motivo ? 'info' : 'ok');
       }
@@ -104,7 +135,9 @@ function planoAtual(): Plano | null {
 
 function atualizarFantasma(): void {
   const plano = planoAtual();
-  const sobre: Unidade | null = hover && !ferramenta ? (mundo.unidadeEm(hover.x, hover.y) ?? null) : null;
+  const sobre: Unidade | null =
+    (selecionado ? mundo.unidades.get(selecionado) : undefined) ??
+    (hover && !ferramenta ? (mundo.unidadeEm(hover.x, hover.y) ?? null) : null);
   cena.desenharFantasma(plano, hover, sobre);
 
   // Status: onde está o cursor + resumo do plano
@@ -133,6 +166,7 @@ canvas.addEventListener('pointerdown', (e) => {
   const c = cena.celulaEm(e.offsetX, e.offsetY);
   if (e.button === 0 && ferramenta) arrasto = { inicio: c, fim: c };
   else pan = { x: e.offsetX, y: e.offsetY };
+  clique = e.button === 0 && !ferramenta ? { x: e.offsetX, y: e.offsetY } : null;
   atualizarFantasma();
 });
 
@@ -158,6 +192,12 @@ canvas.addEventListener('pointerup', (e) => {
         : ({ tipo: 'construir', item: ferramenta, x0: a.x, y0: a.y, x1: b.x, y1: b.y } as const);
     enviar({ tipo: 'comando', id: proximoId++, cmd });
   }
+  // Clique sem ferramenta (sem arrastar): seleciona o que está sob o cursor.
+  if (clique && Math.hypot(e.offsetX - clique.x, e.offsetY - clique.y) < 4) {
+    const c = cena.celulaEm(e.offsetX, e.offsetY);
+    selecionar(mundo.uidEm(c.x, c.y));
+  }
+  clique = null;
   arrasto = null;
   pan = null;
   atualizarFantasma();
@@ -196,7 +236,8 @@ window.addEventListener('keydown', (e) => {
     if (arrasto) {
       arrasto = null;
       atualizarFantasma();
-    } else escolherFerramenta(null);
+    } else if (selecionado) selecionar(0);
+    else escolherFerramenta(null);
   } else if (['1', '2', '3', '4'].includes(k)) mudarVelocidade(([1, 2, 4, 8] as const)[Number(k) - 1]!);
   else if (k === 'arrowleft') mover(PASSO_TECLA, 0);
   else if (k === 'arrowright') mover(-PASSO_TECLA, 0);

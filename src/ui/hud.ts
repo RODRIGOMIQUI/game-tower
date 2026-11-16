@@ -15,6 +15,8 @@ export const ATALHOS: Record<string, string> = {
   o: 'escritorio',
   a: 'apartamento',
   x: DEMOLIR,
+  v: 'elevador_padrao',
+  t: 'escada',
 };
 
 const GRUPOS: [string, Categoria[]][] = [
@@ -50,6 +52,7 @@ function hex(cor: number): string {
 export class Hud {
   private readonly dinheiroEl = el('span', 'valor');
   private readonly popEl = el('span', 'valor');
+  private readonly esperaEl = el('span', 'valor');
   private readonly estrelaEl = el('span', 'estrelas');
   private readonly dataEl = el('span', 'valor');
   private readonly horaEl = el('span', 'valor');
@@ -94,6 +97,7 @@ export class Hud {
       marca,
       bloco('Caixa', this.dinheiroEl),
       bloco('População', this.popEl),
+      bloco('Esperando', this.esperaEl),
       this.estrelaEl,
       this.sandboxEl,
       el('div', 'espaco'),
@@ -131,6 +135,11 @@ export class Hud {
     this.dinheiroEl.textContent = dinheiro(e.dinheiro);
     this.dinheiroEl.style.color = e.dinheiro < 0 ? 'var(--erro)' : '';
     this.popEl.textContent = inteiro(e.populacao);
+    const p = e.pessoas;
+    this.popEl.parentElement!.title =
+      `${inteiro(p.noPredio)} no prédio agora · estresse médio ${p.estresseMedio.toFixed(0)} · ${p.desistenciasHoje} desistências hoje`;
+    this.esperaEl.textContent = inteiro(p.esperando);
+    this.esperaEl.style.color = p.esperando > 100 ? 'var(--erro)' : '';
     this.estrelaEl.textContent = '★'.repeat(e.estrela) + '☆'.repeat(5 - e.estrela);
     this.dataEl.textContent = formatarData(e.tick);
     this.horaEl.textContent = formatarHora(e.tick);
@@ -180,6 +189,7 @@ export class Hud {
 }
 
 function detalhe(t: TipoUnidade): string {
+  if (t.id.startsWith('elevador_')) return `${dinheiro(t.custo + t.custo_extra)} · até ${t.altura_andares} and.`;
   const tamanho = t.largura_col === 1 ? 'por coluna' : `${t.largura_col}×${t.altura_andares}`;
   return `${dinheiro(t.custo)} · ${tamanho}`;
 }

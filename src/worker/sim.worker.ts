@@ -38,11 +38,25 @@ function publicar(forcar = false): void {
         tick: jogo.tick,
         dinheiro: jogo.dinheiro,
         estrela: jogo.estrela,
-        populacao: jogo.populacao(),
+        populacao: jogo.populacaoTotal(),
         velocidade,
         sandbox: jogo.sandbox,
+        pessoas: jogo.populacao.estatisticas(),
       },
     });
+    const pessoas = jogo.populacao.visiveis();
+    const carros = jogo.carros();
+    enviar(
+      {
+        tipo: 'dinamico',
+        tick: jogo.tick,
+        pessoas,
+        carros,
+        pocos: jogo.resumoPocos(),
+        semAcesso: jogo.semAcesso,
+      },
+      [pessoas.buffer, carros.buffer],
+    );
   }
 }
 
@@ -55,7 +69,7 @@ escopo.onmessage = (e) => {
     return;
   } else if (msg.tipo === 'comando') {
     enviar({ tipo: 'resultado', id: msg.id, resultado: jogo.comando(msg.cmd) });
-    publicar();
+    publicar(true);
   } else if (msg.tipo === 'velocidade') {
     velocidade = msg.v;
     publicar(true);

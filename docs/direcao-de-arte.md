@@ -44,6 +44,9 @@ Paleta limitada para consistência. Tokens usados no código (`render/palette.ts
 |---|---|---|
 | `estrutura` | `#3B3F4A` | lajes, paredes externas |
 | `estrutura-claro` | `#5A6070` | colunas, bordas |
+| `interior-vazio` | `#9BA1AD` | andar sem unidade (corredor); claro para as pessoas aparecerem |
+| `poco` | `#2E323B` | poço de elevador |
+| `carro` / `carro-carga` | `#F2F2F2` / `#E3C25B` | carro de elevador / quanto está cheio |
 | `lobby` | `#C9B48A` | piso de lobby, mármore |
 | `escritorio` | `#7FA7C9` | interior de escritórios |
 | `moradia` | `#D9A07A` | apartamentos |

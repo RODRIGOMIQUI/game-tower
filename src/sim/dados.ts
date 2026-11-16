@@ -43,7 +43,27 @@ export function ehEstrutura(id: string): boolean {
   return tipo(id).categoria === 'estrutura';
 }
 
+/** Poços de elevador (ocupam vários andares; têm carros). */
+export function ehElevador(id: string): boolean {
+  return id.startsWith('elevador_');
+}
+
+/** Escadas e escadas rolantes: ligam um andar ao de cima. */
+export function ehEscada(id: string): boolean {
+  return id === 'escada' || id === 'escada_rolante';
+}
+
 /** Tipos ainda não implementados (chegam em fases futuras). */
 export function disponivelNaFase(id: string): boolean {
-  return tipo(id).categoria !== 'transito' && id !== 'sky_lobby';
+  return id !== 'sky_lobby';
 }
+
+/** Manutenção trimestral por carro de elevador (docs/economia.md §2). */
+export const MANUTENCAO_CARRO_TRI: Record<string, number> = {
+  elevador_padrao: 2_000,
+  elevador_expresso: 4_000,
+  elevador_servico: 1_500,
+};
+
+/** Máximo de carros por poço (docs/gdd.md §6.1). */
+export const MAX_CARROS = 8;

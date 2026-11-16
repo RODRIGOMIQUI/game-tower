@@ -100,13 +100,6 @@ describe('unidades', () => {
     s.comando({ tipo: 'construir', item: 'piso', x0: 0, y0: 0, x1: 20, y1: 1 });
     expect(s.comando({ tipo: 'construir', item: 'loja', x0: 0, y0: 1, x1: 0, y1: 1 }).ok).toBe(true);
   });
-
-  it('transporte ainda não está disponível', () => {
-    const j = comPiso();
-    expect(j.comando({ tipo: 'construir', item: 'escada', x0: 0, y0: 1, x1: 0, y1: 1 }).motivo).toBe(
-      'Ainda não disponível',
-    );
-  });
 });
 
 describe('demolição', () => {

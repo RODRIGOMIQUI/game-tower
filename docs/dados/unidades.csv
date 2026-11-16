@@ -3,11 +3,11 @@ piso,Piso,estrutura,1,1,1,acima,500,0,0,nenhuma,0,0,0,0,nao,custo por coluna
 escavacao,Escavação,estrutura,1,1,1,subsolo,2000,0,0,nenhuma,0,0,0,0,nao,custo por coluna; libera célula de subsolo
 lobby,Lobby,estrutura,1,1,1,terreo,3000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; só no térreo
 sky_lobby,Sky lobby,estrutura,3,1,1,acima,4000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; andar >= 15
-escada,Escada,transito,1,8,1,qualquer,5000,0,0,nenhuma,0,0,0,0,nao,liga 1 andar ao de cima; encadeável
-escada_rolante,Escada rolante,transito,3,10,1,qualquer,20000,0,1000,nenhuma,0,0,0,1,nao,liga 1 andar ao de cima; encadeável
-elevador_padrao,Elevador padrão,transito,1,4,30,qualquer,150000,50000,8000,nenhuma,0,15,0,0,nao,custo_extra = por carro (máx 8); +2000/tri por carro
-elevador_expresso,Elevador expresso,transito,3,6,100,qualquer,400000,100000,20000,nenhuma,0,25,0,0,nao,para só em lobbies e subsolos; +4000/tri por carro
-elevador_servico,Elevador de serviço,transito,2,4,30,qualquer,100000,40000,6000,nenhuma,0,10,0,0,nao,só equipe; +1500/tri por carro
+escada,Escada,transito,1,8,1,qualquer,5000,0,0,nenhuma,0,0,0,0,nao,Liga ao andar de cima. Ninguém sobe mais de 2 andares a pé
+escada_rolante,Escada rolante,transito,3,10,1,qualquer,20000,0,1000,nenhuma,0,0,0,1,nao,Liga ao andar de cima. Aceita até 6 andares seguidos
+elevador_padrao,Elevador padrão,transito,1,4,30,qualquer,150000,50000,8000,nenhuma,0,15,0,0,nao,Para em todos os andares do poço. Cada carro extra custa $50.000 e $2.000/tri de manutenção
+elevador_expresso,Elevador expresso,transito,3,6,100,qualquer,400000,100000,20000,nenhuma,0,25,0,0,nao,Para só em lobbies e subsolos. Cada carro extra custa $100.000 e $4.000/tri
+elevador_servico,Elevador de serviço,transito,2,4,30,qualquer,100000,40000,6000,nenhuma,0,10,0,0,nao,Só para equipe e carga. Cada carro extra custa $40.000 e $1.500/tri
 escritorio,Escritório,trabalho,1,9,1,acima,40000,0,0,aluguel_tri,10000,6,6,2,nao,
 apartamento,Apartamento,moradia,1,16,1,acima,80000,0,0,venda,150000,3,3,0,sim,revenda com 30% de desconto se o morador sair
 hotel_simples,Quarto simples,hotel,2,4,1,acima,20000,0,0,diaria,2500,1,1,0,sim,precisa de limpeza diária

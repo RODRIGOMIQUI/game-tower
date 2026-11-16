@@ -87,8 +87,8 @@ Dia/noite e estação mudam o fundo, a iluminação e alguns comportamentos
 ### 5.1 Categorias
 | Tipo | Origem | Agenda típica (dia útil) |
 |---|---|---|
-| Funcionário de escritório | entra pelo lobby/metrô/estacionamento | 08–09h chega · 12–13h almoça · 17–18h sai |
-| Morador | mora no apartamento | 07–08h sai · 18–20h volta · às vezes compra/come |
+| Funcionário de escritório | entra pelo lobby/metrô/estacionamento | 07:00–09:45 chega · 11:30–13:00 almoça (30 min) · 16:30–19:00 sai |
+| Morador | mora no apartamento | 07:00–08:30 sai · 17:30–20:00 volta · fim de semana almoça na torre |
 | Hóspede de hotel | chega à tarde | 15–19h check-in · noite sai para comer · 09–11h check-out |
 | Visitante | de fora | vem por comércio, cinema, eventos |
 | Equipe | limpeza, segurança, médicos | turnos fixos; usam elevador de serviço |
@@ -96,8 +96,10 @@ Dia/noite e estação mudam o fundo, a iluminação e alguns comportamentos
 ### 5.2 Comportamento
 - Cada agente tem uma **lista de compromissos** (destino + janela de horário).
 - Ao sair, pede uma **rota** ao sistema de trânsito (ver §6).
-- Caminhada horizontal tem velocidade fixa; distância conta como tempo de
-  deslocamento.
+- Caminhada horizontal: **2 colunas por minuto de jogo**; distância conta como
+  tempo de deslocamento.
+- Entrada e saída do prédio: pelas pontas de cada trecho do térreo que tenha
+  lobby. Sem lobby, não há entrada.
 - **Disposição para escadas:** até 2 andares a pé; escada rolante até 6
   andares encadeados; acima disso só elevador.
 
@@ -106,10 +108,14 @@ Dia/noite e estação mudam o fundo, a iluminação e alguns comportamentos
   ruído, sujeira, falta de serviço (sem lugar para almoçar).
 - Desce com: chegar rápido, comer, lazer, dormir em casa/quarto limpo.
 - Cor do sprite: **neutro** (< 40) · **irritado** (40–69) · **furioso** (≥ 70).
-- Paciência de espera por elevador: 3 min (funcionário no pico), 5 min
-  (moradores/hóspedes), 8 min (visitantes de lazer). Passou disso, estresse
-  sobe por minuto e, a partir do dobro, a pessoa **desiste** do compromisso
-  (perde uma refeição, falta ao trabalho, vai embora do comércio).
+- Paciência de espera por elevador (minutos de jogo): **30** funcionário,
+  **45** morador (hóspedes e visitantes nas próximas fases). Passou disso, o
+  estresse sobe 1,5 por minuto e, a partir do dobro, a pessoa **desiste** e vai
+  embora do prédio (perde o expediente ou a noite em casa).
+- Estresse cai 5 ao chegar ao destino, 10 ao almoçar e pela metade à meia-noite.
+- *Escala de tempo:* um dia dura ~4 min reais, então elevador e caminhada são
+  "lentos" em minutos de jogo para que o movimento fique visível. Por isso as
+  paciências são de dezenas de minutos, não de poucos minutos.
 
 ### 5.4 Ficha da pessoa
 Clicar em alguém mostra: nome, tipo, unidade de vínculo, destino atual,
@@ -125,16 +131,20 @@ Botão **Seguir** prende a câmera nela.
 |---|---|---|---|
 | Escada | 1 andar (encadeável) | ilimitada, lenta | barata; só trajetos curtos |
 | Escada rolante | 1 andar (encadeável) | alta, contínua | ★3; ótima entre lobby e comércio |
-| Elevador padrão | até 30 andares contíguos | 15 pessoas/carro, até 8 carros | para em qualquer andar configurado |
+| Elevador padrão | até 30 andares contíguos | 15 pessoas/carro, até 8 carros | 3 andares/min, 1 min de portas por parada |
 | Elevador expresso | até 100 andares | 25 pessoas/carro, até 8 carros | ★3; só para em lobbies e subsolos |
 | Elevador de serviço | até 30 andares | 10 pessoas/carro | ★2; só equipe e carga |
 
 ### 6.2 Roteamento
 - O prédio vira um **grafo de trânsito**: nós = (andar, poço/escada),
   arestas = viagens possíveis + caminhada horizontal no andar.
-- Custo da aresta = tempo estimado (inclui espera média recente do poço).
-- Rotas ficam em cache por (origem, destino) e são invalidadas quando algo
-  é construído/demolido ou a configuração de um poço muda.
+- Custo da aresta = tempo estimado. A espera de um poço é o maior entre a
+  média recente e o tempo para escoar a fila atual, então as pessoas se
+  distribuem entre poços quando um lota.
+- Rotas ficam em cache por (origem, destino), invalidadas a cada construção
+  ou demolição e recalculadas a cada 15 minutos de jogo.
+- Escadas: escada comum custa 3 de "esforço" por andar e a rolante 1; o
+  limite por rota é 6 (até 2 andares a pé, ou 6 de escada rolante).
 - Limite de **3 baldeações**. Sem rota → a unidade é marcada
   **"sem acesso"** (alerta vermelho no mapa).
 

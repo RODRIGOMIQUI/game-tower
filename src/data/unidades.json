@@ -92,7 +92,7 @@
     "populacao": 0,
     "ruido_emite": 0,
     "sensivel_ruido": false,
-    "observacao": "liga 1 andar ao de cima; encadeável"
+    "observacao": "Liga ao andar de cima. Ninguém sobe mais de 2 andares a pé"
   },
   {
     "id": "escada_rolante",
@@ -111,7 +111,7 @@
     "populacao": 0,
     "ruido_emite": 1,
     "sensivel_ruido": false,
-    "observacao": "liga 1 andar ao de cima; encadeável"
+    "observacao": "Liga ao andar de cima. Aceita até 6 andares seguidos"
   },
   {
     "id": "elevador_padrao",
@@ -130,7 +130,7 @@
     "populacao": 0,
     "ruido_emite": 0,
     "sensivel_ruido": false,
-    "observacao": "custo_extra = por carro (máx 8); +2000/tri por carro"
+    "observacao": "Para em todos os andares do poço. Cada carro extra custa $50.000 e $2.000/tri de manutenção"
   },
   {
     "id": "elevador_expresso",
@@ -149,7 +149,7 @@
     "populacao": 0,
     "ruido_emite": 0,
     "sensivel_ruido": false,
-    "observacao": "para só em lobbies e subsolos; +4000/tri por carro"
+    "observacao": "Para só em lobbies e subsolos. Cada carro extra custa $100.000 e $4.000/tri"
   },
   {
     "id": "elevador_servico",
@@ -168,7 +168,7 @@
     "populacao": 0,
     "ruido_emite": 0,
     "sensivel_ruido": false,
-    "observacao": "só equipe; +1500/tri por carro"
+    "observacao": "Só para equipe e carga. Cada carro extra custa $40.000 e $1.500/tri"
   },
   {
     "id": "escritorio",

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "data": "node tools/csv-para-json.mjs"
+    "data": "node tools/csv-para-json.mjs",
+    "sim": "vitest run src/sim/cenario.test.ts --silent=false"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

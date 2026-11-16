@@ -2,10 +2,12 @@
 // (docs/direcao-de-arte.md §8). Só redesenha estrutura/unidades quando o mundo muda.
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import type { Plano } from '../sim/construcao';
-import { tipo } from '../sim/dados';
+import { ehElevador, ehEscada, tipo } from '../sim/dados';
 import { ANDAR_MAX, ANDAR_MIN, Est, LARGURA, nomeAndar, type Mundo, type Unidade } from '../sim/mundo';
 import { ANDAR_PX, Camera, COL_PX, LAJE_PX, topoDoAndar, type Celula } from './camera';
+import { CamadaDinamica } from './dinamica';
 import { COR, COR_CATEGORIA, corDoCeu, escurecer, escuridao, misturar } from './paleta';
+import type { Dinamico } from '../worker/protocolo';
 
 const INTERIOR_PX = ANDAR_PX - LAJE_PX;
 const LARGURA_PX = LARGURA * COL_PX;
@@ -31,11 +33,16 @@ export class Cena {
   private readonly noite = new Graphics();
   private readonly grade = new Graphics();
   private readonly fantasma = new Graphics();
+  private readonly dinamicaC = new Container();
+  private readonly alertas = new Graphics();
+  private readonly dinamica: CamadaDinamica;
+  private chaveAlertas = '';
   private escalaGrade = -1;
   private chaveCeu = '';
 
   constructor(private readonly app: Application) {
-    this.mundoBase.addChild(this.terreno, this.estrutura, this.unidades, this.rotulos);
+    this.mundoBase.addChild(this.terreno, this.estrutura, this.unidades, this.dinamicaC, this.alertas, this.rotulos);
+    this.dinamica = new CamadaDinamica(this.dinamicaC);
     this.mundoTopo.addChild(this.grade, this.fantasma);
     app.stage.addChild(this.ceu, this.mundoBase, this.noite, this.mundoTopo);
     this.desenharTerreno();
@@ -168,6 +175,32 @@ export class Cena {
     for (const u of m.unidades.values()) desenharUnidade(gu, u);
   }
 
+  /** Contorno vermelho nas unidades sem rota a partir da rua. */
+  desenharAlertas(m: Mundo, semAcesso: number[]): void {
+    const chave = `${semAcesso.join(',')}|${m.unidades.size}`;
+    if (chave === this.chaveAlertas) return;
+    this.chaveAlertas = chave;
+    const g = this.alertas.clear();
+    for (const uid of semAcesso) {
+      const u = m.unidades.get(uid);
+      if (!u) continue;
+      const r = retanguloUnidade(u);
+      g.rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2).stroke({ width: 2, color: COR.alerta });
+      // Ícone "!" no canto
+      g.rect(r.x + r.w - 9, r.y + 3, 6, 10).fill(COR.alerta);
+      g.rect(r.x + r.w - 7, r.y + 5, 2, 4).fill(0xffffff);
+      g.rect(r.x + r.w - 7, r.y + 10, 2, 2).fill(0xffffff);
+    }
+  }
+
+  receberDinamica(d: Dinamico, agora: number): void {
+    this.dinamica.receber(d, agora);
+  }
+
+  desenharDinamica(agora: number, m: Mundo): void {
+    this.dinamica.desenhar(agora, m, this.camera.escala);
+  }
+
   // --------------------------------------------------------------- fantasma
 
   desenharFantasma(plano: Plano | null, hover: Celula | null, destaque: Unidade | null): void {
@@ -208,10 +241,47 @@ function retanguloUnidade(u: { x: number; y: number; largura: number; altura: nu
 }
 
 function desenharUnidade(g: Graphics, u: Unidade): void {
+  if (ehElevador(u.tipo)) return desenharPoco(g, u);
+  if (ehEscada(u.tipo)) return desenharEscada(g, u);
   const cor = COR_CATEGORIA[tipo(u.tipo).categoria];
   const r = retanguloUnidade(u);
   g.rect(r.x, r.y, r.w, r.h).fill(cor);
   g.rect(r.x + 1, r.y + 1, r.w - 2, 3).fill(escurecer(cor, 0.8)); // teto
   g.rect(r.x + 2, r.y + r.h - 12, 3, 12).fill(escurecer(cor, 0.55)); // porta
   g.rect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1).stroke({ width: 1, color: escurecer(cor, 0.6) });
+}
+
+/** Poço: coluna escura atravessando os andares, com portas em cada andar. */
+function desenharPoco(g: Graphics, u: Unidade): void {
+  const x = u.x * COL_PX;
+  const w = u.largura * COL_PX;
+  const topo = topoDoAndar(u.y + u.altura - 1);
+  const base = topoDoAndar(u.y) + INTERIOR_PX;
+  g.rect(x, topo, w, base - topo).fill(COR.poco);
+  g.rect(x, topo, 1, base - topo).fill(COR.estruturaClaro);
+  g.rect(x + w - 1, topo, 1, base - topo).fill(COR.estruturaClaro);
+  const expresso = u.tipo === 'elevador_expresso';
+  for (let y = u.y; y < u.y + u.altura; y++) {
+    const t = topoDoAndar(y);
+    g.rect(x + 1, t + INTERIOR_PX, w - 2, LAJE_PX).fill(COR.estrutura);
+    if (!expresso || y <= 0) g.rect(x - 1, t + 8, 2, INTERIOR_PX - 8).fill(COR.portaPoco);
+  }
+  // Casa de máquinas no topo
+  g.rect(x, topo - 6, w, 6).fill(COR.estrutura);
+}
+
+/** Escada: degraus subindo da esquerda para a direita até o andar de cima. */
+function desenharEscada(g: Graphics, u: Unidade): void {
+  const x = u.x * COL_PX;
+  const w = u.largura * COL_PX;
+  const base = topoDoAndar(u.y) + INTERIOR_PX;
+  const altura = ANDAR_PX;
+  const cor = u.tipo === 'escada_rolante' ? COR_CATEGORIA.transito : COR.degrau;
+  const degraus = 8;
+  for (let i = 0; i < degraus; i++) {
+    const dx = (w / degraus) * i;
+    const dy = (altura / degraus) * (i + 1);
+    g.rect(x + dx, base - dy, w / degraus + 0.5, 2).fill(cor);
+    g.rect(x + dx, base - dy, 1, dy).fill(escurecer(cor, 0.7));
+  }
 }
