@@ -53,6 +53,7 @@ export class Hud {
   private readonly dinheiroEl = el('span', 'valor');
   private readonly popEl = el('span', 'valor');
   private readonly esperaEl = el('span', 'valor');
+  private readonly triEl = el('span', 'valor');
   private readonly estrelaEl = el('span', 'estrelas');
   private readonly dataEl = el('span', 'valor');
   private readonly horaEl = el('span', 'valor');
@@ -96,6 +97,7 @@ export class Hud {
     raiz.append(
       marca,
       bloco('Caixa', this.dinheiroEl),
+      bloco('Trimestre', this.triEl),
       bloco('População', this.popEl),
       bloco('Esperando', this.esperaEl),
       this.estrelaEl,
@@ -134,6 +136,12 @@ export class Hud {
   atualizar(e: EstadoResumo): void {
     this.dinheiroEl.textContent = dinheiro(e.dinheiro);
     this.dinheiroEl.style.color = e.dinheiro < 0 ? 'var(--erro)' : '';
+    const r = e.livro.receitas;
+    const receitas = r.aluguel + r.vendas + r.hotel + r.comida;
+    this.triEl.textContent = `+${dinheiro(receitas)}`;
+    this.triEl.parentElement!.title =
+      `Receitas do trimestre — aluguel ${dinheiro(r.aluguel)} · vendas ${dinheiro(r.vendas)} · hotel ${dinheiro(r.hotel)} · comida ${dinheiro(r.comida)}\n` +
+      `Despesas — construção ${dinheiro(e.livro.construcao)} · manutenção cobrada no fechamento`;
     this.popEl.textContent = inteiro(e.populacao);
     const p = e.pessoas;
     this.popEl.parentElement!.title =

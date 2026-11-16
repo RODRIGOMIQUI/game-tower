@@ -10,6 +10,7 @@ function predioBasico() {
   construir(j, 'lobby', 0, 0, 39, 0);
   construir(j, 'elevador_padrao', 18, 0, 18, 9);
   construir(j, 'escritorio', 0, 4, 17, 4); // 2 escritórios à esquerda do poço
+  j.ocuparTodas();
   return j;
 }
 
@@ -122,6 +123,7 @@ describe('dia de trabalho', () => {
         construir(j, 'escritorio', 0, y, 26, y);
         construir(j, 'escritorio', 33, y, 59, y);
       }
+      j.ocuparTodas();
       avancarAte(j, 10);
       return { chegaram: contarEstados(j).NaUnidade ?? 0, desistiram: j.populacao.desistenciasHoje };
     };

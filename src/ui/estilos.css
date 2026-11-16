@@ -128,6 +128,26 @@ html, body {
   background: rgba(255, 90, 60, 0.15); color: var(--erro); font-size: 12px;
 }
 .obs { margin: 10px 0 0; font-size: 11px; color: var(--texto-fraco); }
+.satisf { margin: 8px 0; padding-top: 8px; border-top: 1px solid var(--borda); }
+.barra { height: 6px; border-radius: 3px; background: var(--vidro-claro); margin: 4px 0 6px; overflow: hidden; }
+.barra > div { height: 100%; }
+.barra .boa { background: var(--ok); }
+.barra .ok { background: var(--destaque); }
+.barra .ruim { background: var(--erro); }
+.kv.sub { font-size: 12px; padding: 1px 0 1px 8px; }
+.kv b.pos { color: var(--ok); }
+.kv b.neg { color: var(--erro); }
+.insp-modo + .insp-modo { margin-top: 8px; }
+
+/* ---- fim de jogo ---- */
+#fim {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  background: rgba(10, 12, 32, 0.7); z-index: 10;
+}
+#fim[hidden] { display: none; }
+#fim .painel { padding: 24px 28px; max-width: 360px; text-align: center; }
+#fim h2 { margin: 0 0 8px; color: var(--erro); }
+#fim p { color: var(--texto-fraco); margin: 0 0 16px; }
 
 /* ---- avisos (toasts) ---- */
 #avisos {

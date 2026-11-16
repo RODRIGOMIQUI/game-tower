@@ -4,6 +4,7 @@
 import { executarPlano, planejarConstrucao, planejarDemolicao, type Contexto, type Plano } from './construcao';
 import { ehElevador, tipo } from './dados';
 import { Est, LARGURA, Mundo, type SnapshotMundo } from './mundo';
+import { Inquilinos, type CategoriaReceita, type NivelPreco } from './inquilinos';
 import { Populacao, type Ambiente } from './pessoas';
 import { inicioDeTrimestre, MIN_POR_DIA, TICK_INICIAL } from './relogio';
 import { Rng } from './rng';
@@ -20,18 +21,35 @@ export type Comando =
   | { tipo: 'construir'; item: string; x0: number; y0: number; x1: number; y1: number }
   | { tipo: 'demolir'; x0: number; y0: number; x1: number; y1: number }
   | { tipo: 'carros'; uid: number; delta: 1 | -1 }
-  | { tipo: 'modo'; uid: number; modo: ModoElevador };
+  | { tipo: 'modo'; uid: number; modo: ModoElevador }
+  | { tipo: 'preco'; uid: number; nivel: NivelPreco };
 
 export interface ResultadoComando {
   ok: boolean;
-  acao: Plano['acao'] | 'elevador';
+  acao: Plano['acao'] | 'elevador' | 'preco';
   feitos: number;
   /** Positivo = gasto; negativo = reembolso. */
   custo: number;
   motivo?: string;
 }
 
-export type EventoJogo = { tipo: 'trimestre'; tick: number; manutencao: number };
+/** Receitas e despesas acumuladas no trimestre corrente. */
+export interface Livro {
+  receitas: Record<CategoriaReceita, number>;
+  construcao: number;
+  manutencao: number;
+}
+
+export type EventoJogo =
+  | { tipo: 'trimestre'; tick: number; manutencao: number; livro: Livro; saidas: number; caixa: number }
+  | { tipo: 'falencia'; tick: number };
+
+/** Trimestres seguidos com caixa negativo até a falência (modo carreira). */
+export const TRIMESTRES_ATE_FALENCIA = 2;
+
+function livroVazio(): Livro {
+  return { receitas: { aluguel: 0, vendas: 0, hotel: 0, comida: 0 }, construcao: 0, manutencao: 0 };
+}
 
 export interface OpcoesJogo {
   seed?: number;
@@ -52,15 +70,27 @@ export class Jogo {
   readonly transito = new Transito();
   readonly roteador = new Roteador();
   readonly populacao: Populacao;
+  readonly inquilinos: Inquilinos;
   /** Unidades sem rota a partir da rua. */
   semAcesso: number[] = [];
+  private semAcessoSet = new Set<number>();
+  livro: Livro = livroVazio();
+  trimestresNegativos = 0;
+  /** Fim de jogo por falência: a simulação para. */
+  encerrado = false;
 
   constructor(opts: OpcoesJogo = {}) {
     this.rng = new Rng(opts.seed ?? 1);
     this.sandbox = opts.sandbox ?? false;
     this.dinheiro = opts.dinheiro ?? (this.sandbox ? DINHEIRO_SANDBOX : DINHEIRO_INICIAL);
     this.estrela = opts.estrela ?? 1;
+    this.inquilinos = new Inquilinos({ creditar: (c, v) => this.creditar(c, v) });
     this.populacao = new Populacao(this.ambiente());
+  }
+
+  private creditar(categoria: CategoriaReceita, valor: number): void {
+    this.dinheiro += valor;
+    this.livro.receitas[categoria] += valor;
   }
 
   contexto(): Contexto {
@@ -74,12 +104,20 @@ export class Jogo {
       roteador: this.roteador,
       rng: this.rng,
       entradas: entradas(this.mundo),
-      lanchonetes: [...this.mundo.unidades.values()].filter((u) => u.tipo === 'lanchonete'),
+      comidas: [...this.mundo.unidades.values()].filter((u) => tipo(u.tipo).categoria === 'comida'),
+      eventos: {
+        cliente: (uid, p) => this.inquilinos.cliente(uid, p, this.mundo),
+        partiu: (p) => this.inquilinos.partiu(p, this.populacao),
+      },
     };
   }
 
   comando(cmd: Comando): ResultadoComando {
     if (cmd.tipo === 'carros') return this.mudarCarros(cmd.uid, cmd.delta);
+    if (cmd.tipo === 'preco') {
+      const ok = this.inquilinos.mudarPreco(cmd.uid, cmd.nivel);
+      return { ok, acao: 'preco', feitos: ok ? 1 : 0, custo: 0, motivo: ok ? undefined : 'Esta unidade não tem preço' };
+    }
     if (cmd.tipo === 'modo') {
       const p = this.transito.pocos.get(cmd.uid);
       if (p) p.modo = cmd.modo;
@@ -92,6 +130,7 @@ export class Jogo {
     if (plano.validos > 0) {
       executarPlano(this.mundo, plano);
       this.dinheiro -= plano.custoTotal;
+      this.livro.construcao += plano.custoTotal;
       this.mundoMudou();
     }
     return {
@@ -114,6 +153,7 @@ export class Jogo {
       if (preco > this.dinheiro) return r(false, 0, 'Dinheiro insuficiente');
       if (!p.adicionarCarro()) return r(false, 0, 'Máximo de carros');
       this.dinheiro -= preco;
+      this.livro.construcao += preco;
       return r(true, preco);
     }
     const passageiros = p.removerCarro();
@@ -121,6 +161,7 @@ export class Jogo {
     this.populacao.replanejarEmMovimento(passageiros);
     const reembolso = -Math.round(preco * 0.25);
     this.dinheiro -= reembolso;
+    this.livro.construcao += reembolso;
     return r(true, reembolso);
   }
 
@@ -130,19 +171,35 @@ export class Jogo {
     const despejadas = this.transito.sincronizar(this.mundo);
     this.roteador.reconstruir(this.mundo, this.transito);
     this.populacao.atualizarAmbiente(this.ambiente());
-    this.populacao.sincronizarUnidades(this.tick);
+    this.inquilinos.sincronizar(this.mundo);
+    this.populacao.sincronizarUnidades();
     this.populacao.replanejarEmMovimento(despejadas);
     this.semAcesso = this.populacao.unidadesSemAcesso();
+    this.semAcessoSet = new Set(this.semAcesso);
+    this.inquilinos.atualizarVizinhanca(this.mundo, this.roteador);
+  }
+
+  private contextoEconomia() {
+    return { mundo: this.mundo, populacao: this.populacao, rng: this.rng, semAcesso: this.semAcessoSet };
+  }
+
+  /** Ocupa todas as unidades vagas (testes/cenários). */
+  ocuparTodas(): void {
+    this.inquilinos.ocuparTodas(this.tick, this.contextoEconomia());
   }
 
   /** Avança `n` ticks (minutos de jogo). */
   avancar(n: number): EventoJogo[] {
     const eventos: EventoJogo[] = [];
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && !this.encerrado; i++) {
       this.tick++;
       const minuto = this.tick % MIN_POR_DIA;
-      if (minuto === 0) this.populacao.novoDia(this.tick);
-      if (inicioDeTrimestre(this.tick)) eventos.push(this.fecharTrimestre());
+      if (minuto === 0) {
+        this.inquilinos.fimDoDia(this.populacao);
+        this.populacao.novoDia(this.tick);
+      }
+      if (inicioDeTrimestre(this.tick)) eventos.push(...this.fecharTrimestre());
+      if (minuto % 60 === 0) this.inquilinos.hora(this.tick, this.contextoEconomia());
       // Filas mudam ao longo do dia: rotas são recalculadas a cada 15 minutos.
       if (minuto % INTERVALO_ROTAS === 0) this.roteador.limparCache();
       this.transito.passo(this.tick, Math.floor(minuto / 60), this.populacao);
@@ -162,10 +219,22 @@ export class Jogo {
     return this.populacao.total;
   }
 
-  private fecharTrimestre(): EventoJogo {
+  private fecharTrimestre(): EventoJogo[] {
+    const saidas = this.inquilinos.fecharTrimestre(this.populacao, this.mundo);
     const manutencao = this.manutencaoTrimestral();
     this.dinheiro -= manutencao;
-    return { tipo: 'trimestre', tick: this.tick, manutencao };
+    this.livro.manutencao += manutencao;
+    const eventos: EventoJogo[] = [
+      { tipo: 'trimestre', tick: this.tick, manutencao, livro: this.livro, saidas: saidas.length, caixa: this.dinheiro },
+    ];
+    this.livro = livroVazio();
+    if (this.sandbox) return eventos;
+    this.trimestresNegativos = this.dinheiro < 0 ? this.trimestresNegativos + 1 : 0;
+    if (this.trimestresNegativos >= TRIMESTRES_ATE_FALENCIA) {
+      this.encerrado = true;
+      eventos.push({ tipo: 'falencia', tick: this.tick });
+    }
+    return eventos;
   }
 
   snapshotMundo(): SnapshotMundo {

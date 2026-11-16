@@ -138,7 +138,7 @@ describe('tempo e trimestre', () => {
     j.comando({ tipo: 'construir', item: 'seguranca', x0: 0, y0: 0, x1: 0, y1: 0 });
     const antes = j.dinheiro;
     const eventos = j.avancar(4 * 1440); // passa da meia-noite do dia 1 do T2
-    expect(eventos).toEqual([{ tipo: 'trimestre', tick: 4 * 1440, manutencao: 20_000 }]);
+    expect(eventos).toMatchObject([{ tipo: 'trimestre', tick: 4 * 1440, manutencao: 20_000 }]);
     expect(j.dinheiro).toBe(antes - 20_000);
   });
 

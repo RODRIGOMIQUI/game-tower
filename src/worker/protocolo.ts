@@ -1,5 +1,6 @@
 // Mensagens entre o thread principal (render/UI) e o Worker da simulação.
-import type { Comando, EventoJogo, ResultadoComando, ResumoPoco } from '../sim/jogo';
+import type { Comando, EventoJogo, Livro, ResultadoComando, ResumoPoco } from '../sim/jogo';
+import type { EstadoUnidade } from '../sim/inquilinos';
 import type { Estatisticas } from '../sim/pessoas';
 import type { SnapshotMundo } from '../sim/mundo';
 import type { Velocidade } from '../sim/relogio';
@@ -7,7 +8,8 @@ import type { Velocidade } from '../sim/relogio';
 export type ParaSim =
   | { tipo: 'iniciar'; seed: number; sandbox: boolean }
   | { tipo: 'comando'; id: number; cmd: Comando }
-  | { tipo: 'velocidade'; v: Velocidade };
+  | { tipo: 'velocidade'; v: Velocidade }
+  | { tipo: 'inspecionar'; uid: number };
 
 export interface EstadoResumo {
   tick: number;
@@ -17,6 +19,17 @@ export interface EstadoResumo {
   velocidade: Velocidade;
   sandbox: boolean;
   pessoas: Estatisticas;
+  /** Receitas e despesas do trimestre corrente. */
+  livro: Livro;
+  encerrado: boolean;
+}
+
+/** Detalhes da unidade inspecionada. */
+export interface Inspecao {
+  estado: EstadoUnidade | null;
+  expectativa: number;
+  ocupantes: number;
+  lotacao: number;
 }
 
 /** Estado que muda a cada tick (posições). Enviado junto com 'estado'. */
@@ -28,6 +41,10 @@ export interface Dinamico {
   carros: Float32Array;
   pocos: ResumoPoco[];
   semAcesso: number[];
+  /** [uid, situação, satisfação, avisos] por unidade com economia. */
+  unidades: Float32Array;
+  versaoUnidades: number;
+  inspecao: Inspecao | null;
 }
 
 export type DaSim =

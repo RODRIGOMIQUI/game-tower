@@ -177,6 +177,26 @@ Lista completa com custos em [dados/unidades.csv](dados/unidades.csv).
 | Acesso | estacionamento, metrô | novas portas de entrada além do lobby |
 | Marco | **Coroa da Torre** (observatório nos andares 98–100) | condição final do jogo |
 
+### 7.0 Ocupação
+
+Toda unidade nasce **vaga**. Interessados aparecem por hora (8h–20h) se a
+unidade tiver acesso pela rua; a chance cresce com preço baixo e boa
+satisfação esperada (ruído, onde comer, preço).
+
+| Unidade | Como ocupa | Receita |
+|---|---|---|
+| Escritório, loja | inquilino aluga | aluguel no fechamento do trimestre |
+| Apartamento | comprador se muda | venda única (revenda vale 70% se o morador sair) |
+| Hotel | reserva às 14h; hóspedes chegam 15–19h, jantam, saem 9–11h | diária na reserva |
+| Lanchonete, restaurante | administrados pela torre | por cliente (funcionários, moradores, hóspedes e visitantes) |
+
+- Quarto fica **sujo** após o check-out e só volta a ser alugado depois da
+  limpeza. Cada unidade de Limpeza arruma até 20 quartos por dia (10h–17h).
+  Por enquanto a limpeza é abstrata; camareiras andando pelo prédio vêm depois.
+- Visitantes de fora vêm comer e comprar: lanchonete 11–14h, restaurante
+  11–14h e 18–21h, loja 10–20h (×1,5 no fim de semana).
+- Loja com menos de 5 clientes no dia: satisfação −20 (o lojista reclama).
+
 ### 7.1 Satisfação da unidade
 Cada unidade ocupada tem satisfação 0–100 (média móvel por trimestre):
 
@@ -188,11 +208,16 @@ satisfação = 100
            + bônus_serviços           (comida/loja a ≤ 1 baldeação)
 ```
 
-- **≥ 70:** ótima — aceita aumento de aluguel sem sair.
+- Atualizada à meia-noite (média móvel diária). O estresse vem dos ocupantes
+  (escritório, apartamento) ou dos clientes e hóspedes (hotel, comida, loja).
+- **≥ 70:** ótima, aguenta preço mais alto.
 - **40–69:** ok.
-- **< 40:** em risco — ícone de alerta.
-- **< 25 por 2 trimestres seguidos:** inquilino sai (apartamento volta à venda
-  com 30% de desconto).
+- **< 40:** em risco, com marcador amarelo.
+- **< 25 num fechamento:** aviso (marcador laranja). **2 avisos seguidos:**
+  inquilino sai (apartamento volta à venda com 30% de desconto).
+- Ruído: +4 por ponto de ruído de vizinho no mesmo andar a até 10 colunas,
+  +2 se estiver logo acima ou abaixo; máximo 40.
+- Onde comer: +10 se houver lanchonete/restaurante alcançável.
 
 ### 7.2 Ruído
 Escritórios, comércio, lazer e reciclagem emitem ruído; moradia e hotel

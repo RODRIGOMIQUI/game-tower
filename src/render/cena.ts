@@ -37,6 +37,9 @@ export class Cena {
   private readonly alertas = new Graphics();
   private readonly dinamica: CamadaDinamica;
   private chaveAlertas = '';
+  private mundoAtual: Mundo | null = null;
+  private readonly situacoes = new Map<number, Situacao>();
+  private versaoSituacoes = -1;
   private escalaGrade = -1;
   private chaveCeu = '';
 
@@ -171,8 +174,26 @@ export class Cena {
       }
     }
 
+    this.mundoAtual = m;
+    this.redesenharUnidades();
+  }
+
+  /** Recebe [uid, situação, satisfação, avisos] por unidade e redesenha se mudou. */
+  atualizarSituacoes(resumo: Float32Array, versao: number): void {
+    if (versao === this.versaoSituacoes) return;
+    this.versaoSituacoes = versao;
+    this.situacoes.clear();
+    for (let i = 0; i < resumo.length; i += 4) {
+      this.situacoes.set(resumo[i]!, { situacao: resumo[i + 1]!, satisfacao: resumo[i + 2]!, avisos: resumo[i + 3]! });
+    }
+    this.redesenharUnidades();
+  }
+
+  private redesenharUnidades(): void {
+    const m = this.mundoAtual;
     const gu = this.unidades.clear();
-    for (const u of m.unidades.values()) desenharUnidade(gu, u);
+    if (!m) return;
+    for (const u of m.unidades.values()) desenharUnidade(gu, u, this.situacoes.get(u.uid));
   }
 
   /** Contorno vermelho nas unidades sem rota a partir da rua. */
@@ -240,15 +261,40 @@ function retanguloUnidade(u: { x: number; y: number; largura: number; altura: nu
   };
 }
 
-function desenharUnidade(g: Graphics, u: Unidade): void {
+interface Situacao {
+  /** 0 vaga, 1 ocupada, 2 hospedada, 3 suja (ver CODIGO_SITUACAO). */
+  situacao: number;
+  satisfacao: number;
+  avisos: number;
+}
+
+function desenharUnidade(g: Graphics, u: Unidade, s: Situacao | undefined): void {
   if (ehElevador(u.tipo)) return desenharPoco(g, u);
   if (ehEscada(u.tipo)) return desenharEscada(g, u);
-  const cor = COR_CATEGORIA[tipo(u.tipo).categoria];
+  let cor = COR_CATEGORIA[tipo(u.tipo).categoria];
+  const vaga = s?.situacao === 0;
+  const suja = s?.situacao === 3;
+  if (vaga) cor = misturar(cor, COR.vago, 0.6);
+  else if (suja) cor = misturar(cor, COR.sujo, 0.55);
   const r = retanguloUnidade(u);
   g.rect(r.x, r.y, r.w, r.h).fill(cor);
   g.rect(r.x + 1, r.y + 1, r.w - 2, 3).fill(escurecer(cor, 0.8)); // teto
   g.rect(r.x + 2, r.y + r.h - 12, 3, 12).fill(escurecer(cor, 0.55)); // porta
   g.rect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1).stroke({ width: 1, color: escurecer(cor, 0.6) });
+  if (vaga && r.w >= 24) {
+    // Placa "vago / à venda"
+    const px = r.x + r.w / 2 - 6;
+    g.rect(px, r.y + 10, 12, 7).fill(0xffffff);
+    g.rect(px + 2, r.y + 12, 8, 1).fill(COR.estrutura);
+    g.rect(px + 2, r.y + 14, 5, 1).fill(COR.estrutura);
+  }
+  if (s && !vaga && (s.avisos > 0 || s.satisfacao < 40)) {
+    // Marcador de insatisfação: amarelo (< 40), laranja (já recebeu aviso)
+    const corM = s.avisos > 0 ? COR.alerta : COR.atencao;
+    g.circle(r.x + r.w - 6, r.y + 10, 4).fill(corM);
+    g.rect(r.x + r.w - 6.5, r.y + 7, 1, 4).fill(0x1e2129);
+    g.rect(r.x + r.w - 6.5, r.y + 12, 1, 1).fill(0x1e2129);
+  }
 }
 
 /** Poço: coluna escura atravessando os andares, com portas em cada andar. */

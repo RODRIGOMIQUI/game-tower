@@ -10,7 +10,7 @@ npm install
 npm run dev          # http://localhost:5173  (sandbox: http://localhost:5173/?sandbox=1)
 npm test             # testes da simulação
 npm run typecheck
-npm run sim          # cenário headless: 2.000 pessoas, 30 andares, tabela hora a hora
+npm run sim          # cenários headless: 2.000 pessoas (hora a hora) e 2 anos de carreira
 npm run data         # regenera src/data/unidades.json a partir de docs/dados/unidades.csv
 ```
 
@@ -24,6 +24,12 @@ Elevador: escolha a ferramenta e **arraste na vertical** para definir os andares
 Clique (sem ferramenta) num poço ou unidade para abrir o inspetor: lá se
 adicionam carros e se muda o modo de despacho. Unidades com contorno vermelho
 estão **sem acesso** (sem rota a partir do lobby).
+
+Unidades novas ficam **vagas** (cinza, com placa) até um inquilino chegar. No
+inspetor de uma unidade você vê situação, receita e satisfação (com o motivo de
+cada ponto) e ajusta o **preço**. Marcador amarelo = satisfação baixa; laranja =
+inquilino já recebeu aviso e pode sair no próximo fechamento. Caixa negativo em
+dois fechamentos seguidos = falência (exceto no sandbox).
 
 ## Estrutura do código
 
@@ -50,7 +56,7 @@ src/
 | 0 | Pré-produção (GDD, arte, economia) | ✅ |
 | 1 | Fundação técnica: grade, câmera, construção, relógio | ✅ |
 | 2 | Pessoas e transporte vertical | ✅ |
-| 3 | Inquilinos e economia | — |
+| 3 | Inquilinos e economia | ✅ |
 | 4 | Progressão e infraestrutura (MVP) | — |
 | 5 | Eventos | — |
 | 6 | UX moderna: overlays, relatórios, save | — |

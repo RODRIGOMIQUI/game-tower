@@ -28,6 +28,7 @@ export function montarCenario() {
       j.comando({ tipo: 'construir', item: 'escritorio', x0: ini, y0: y, x1: ini + TRECHO - 1, y1: y });
     }
   }
+  j.ocuparTodas();
   return j;
 }
 

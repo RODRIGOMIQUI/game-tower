@@ -99,6 +99,18 @@ $12.000/tri de manutenção. O jogador recupera o caixa em ~6 trimestres, ou
 acelera vendendo alguns apartamentos. **★2 deve vir no 1º ano**, como
 planejado.
 
+## 4.1 Resultado da simulação (Fase 3)
+
+`npm run sim` roda dois anos de carreira com $2.000.000:
+
+| Layout | Resultado |
+|---|---|
+| Começo típico (lobby, 5 andares, 33 escritórios, lanchonete, 1 elevador com 2 carros) | caixa vai de $240 mil após construir para **$2,37 milhões** em 8 trimestres; ~$270 mil/tri de aluguel; nenhum inquilino sai |
+| Escritórios sem acesso + elevadores inúteis com 8 carros | caixa negativo no 1º trimestre, **falência no 2º** |
+
+Lanchonete fatura ~$11 mil/tri nesse prédio, abaixo da estimativa de ~$24 mil
+da §3: só 33 escritórios e um elevador limitam o movimento. Revisar na Fase 9.
+
 ## 5. Balanceamento: como vamos ajustar
 
 1. Todo número fica em `packages/data/*.json`, sem constantes mágicas no código.

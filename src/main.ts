@@ -43,11 +43,13 @@ const hud = new Hud({
 const inspetor = new Inspetor({
   carros: (uid, delta) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'carros', uid, delta } }),
   modo: (uid, modo) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'modo', uid, modo } }),
+  preco: (uid, nivel) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'preco', uid, nivel } }),
   fechar: () => selecionar(0),
 });
 
 function selecionar(uid: number): void {
   selecionado = uid;
+  enviar({ tipo: 'inspecionar', uid });
   atualizarInspetor();
   atualizarFantasma();
 }
@@ -55,7 +57,12 @@ function selecionar(uid: number): void {
 function atualizarInspetor(): void {
   const u = selecionado ? mundo.unidades.get(selecionado) ?? null : null;
   if (!u) selecionado = 0;
-  inspetor.mostrar(u, dinamico?.pocos.find((p) => p.uid === selecionado), !!dinamico?.semAcesso.includes(selecionado));
+  inspetor.mostrar(
+    u,
+    dinamico?.pocos.find((p) => p.uid === selecionado),
+    !!dinamico?.semAcesso.includes(selecionado),
+    dinamico?.inspecao ?? null,
+  );
 }
 
 app.ticker.add(() => cena.desenharDinamica(performance.now(), mundo));
@@ -79,12 +86,14 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
       dinamico = msg;
       cena.receberDinamica(msg, performance.now());
       cena.desenharAlertas(mundo, msg.semAcesso);
+      cena.atualizarSituacoes(msg.unidades, msg.versaoUnidades);
       if (selecionado) atualizarInspetor();
       break;
     case 'resultado': {
       const r = msg.resultado;
       if (!r.ok) hud.aviso(r.motivo ?? 'Não foi possível', 'erro');
       else {
+        if (r.acao === 'preco') break;
         const verbo = r.acao === 'construir' ? 'Construído' : r.acao === 'demolir' ? 'Demolido' : 'Elevador atualizado';
         const extra = r.motivo ? ` (parte falhou: ${r.motivo})` : '';
         hud.aviso(`${verbo}: ${r.feitos} · ${dinheiro(-r.custo)}${extra}`, r.motivo ? 'info' : 'ok');
@@ -94,8 +103,18 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
     case 'eventos':
       for (const ev of msg.eventos) {
         if (ev.tipo === 'trimestre') {
-          const d = data(ev.tick);
-          hud.aviso(`Fechamento do trimestre · T${d.trimestre} ano ${d.ano} · manutenção ${dinheiro(-ev.manutencao)}`, 'info');
+          // O fechamento acontece à 00:00 do 1º dia do trimestre seguinte.
+          const d = data(ev.tick - 1);
+          const r = ev.livro.receitas;
+          const receitas = r.aluguel + r.vendas + r.hotel + r.comida;
+          const saidas = ev.saidas ? ` · ${ev.saidas} inquilino(s) saíram` : '';
+          hud.aviso(
+            `Fechamento T${d.trimestre}/ano ${d.ano}: receitas ${dinheiro(receitas)} · manutenção ${dinheiro(-ev.manutencao)} · construção ${dinheiro(-ev.livro.construcao)}${saidas}`,
+            ev.caixa < 0 ? 'erro' : 'info',
+          );
+          if (ev.caixa < 0) hud.aviso('Caixa negativo! Dois trimestres seguidos assim e a torre vai à falência.', 'erro');
+        } else if (ev.tipo === 'falencia') {
+          document.getElementById('fim')!.hidden = false;
         }
       }
       break;
@@ -103,6 +122,7 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
 };
 
 const sandbox = new URLSearchParams(location.search).get('sandbox') === '1';
+document.getElementById('novo-jogo')!.onclick = () => location.reload();
 enviar({ tipo: 'iniciar', seed: Date.now() >>> 0, sandbox });
 
 function mudarVelocidade(v: Velocidade): void {

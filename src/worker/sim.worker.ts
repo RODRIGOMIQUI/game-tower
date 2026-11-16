@@ -17,6 +17,7 @@ let ultimo = performance.now();
 let versaoEnviada = -1;
 let tickEnviado = -1;
 let dinheiroEnviado = NaN;
+let inspecionado = 0;
 
 function enviar(msg: DaSim, transferir: Transferable[] = []): void {
   escopo.postMessage(msg, transferir);
@@ -42,10 +43,14 @@ function publicar(forcar = false): void {
         velocidade,
         sandbox: jogo.sandbox,
         pessoas: jogo.populacao.estatisticas(),
+        livro: jogo.livro,
+        encerrado: jogo.encerrado,
       },
     });
     const pessoas = jogo.populacao.visiveis();
     const carros = jogo.carros();
+    const unidades = jogo.inquilinos.resumo();
+    const est = inspecionado ? (jogo.inquilinos.get(inspecionado) ?? null) : null;
     enviar(
       {
         tipo: 'dinamico',
@@ -54,8 +59,18 @@ function publicar(forcar = false): void {
         carros,
         pocos: jogo.resumoPocos(),
         semAcesso: jogo.semAcesso,
+        unidades,
+        versaoUnidades: jogo.inquilinos.versao,
+        inspecao: inspecionado
+          ? {
+              estado: est,
+              expectativa: est ? jogo.inquilinos.expectativa(est) : 0,
+              ocupantes: jogo.populacao.ocupantes(inspecionado).length,
+              lotacao: jogo.populacao.lotacaoDe(inspecionado),
+            }
+          : null,
       },
-      [pessoas.buffer, carros.buffer],
+      [pessoas.buffer, carros.buffer, unidades.buffer],
     );
   }
 }
@@ -69,6 +84,9 @@ escopo.onmessage = (e) => {
     return;
   } else if (msg.tipo === 'comando') {
     enviar({ tipo: 'resultado', id: msg.id, resultado: jogo.comando(msg.cmd) });
+    publicar(true);
+  } else if (msg.tipo === 'inspecionar') {
+    inspecionado = msg.uid;
     publicar(true);
   } else if (msg.tipo === 'velocidade') {
     velocidade = msg.v;
