@@ -26,7 +26,7 @@ export const NIVEIS_PRECO: Record<NivelPreco, { nome: string; mult: number; sati
 export type Situacao = 'vaga' | 'ocupada' | 'hospedada' | 'suja';
 export const CODIGO_SITUACAO: Record<Situacao, number> = { vaga: 0, ocupada: 1, hospedada: 2, suja: 3 };
 
-export type CategoriaReceita = 'aluguel' | 'vendas' | 'hotel' | 'comida';
+export type CategoriaReceita = 'aluguel' | 'vendas' | 'hotel' | 'comida' | 'estacionamento';
 
 export interface Componentes {
   estresse: number;
@@ -34,6 +34,7 @@ export interface Componentes {
   servicos: number;
   preco: number;
   clientes: number;
+  sujeira: number;
 }
 
 export interface EstadoUnidade {
@@ -51,6 +52,8 @@ export interface EstadoUnidade {
   /** Média móvel do estresse de clientes/hóspedes. */
   estresseClientes: number;
   clientesHoje: number;
+  /** Quarto de hotel alcançável por alguma equipe de limpeza. */
+  limpavel: boolean;
 }
 
 /** Quem recebe o dinheiro (o Jogo). */
@@ -71,6 +74,9 @@ export const SATISFACAO_CRITICA = 25;
 const ALCANCE_RUIDO = 10;
 const RUIDO_MAX = 40;
 const BONUS_SERVICOS = 10;
+/** Penalidade de satisfação sem reciclagem acima da população-limite. */
+export const PENALIDADE_SUJEIRA = 15;
+export const POPULACAO_EXIGE_RECICLAGEM = 3000;
 
 /** Probabilidade por hora de um interessado ocupar uma unidade vaga (antes de preço/expectativa). */
 const PROCURA_POR_HORA: Record<string, number> = { escritorio: 0.06, loja: 0.05, apartamento: 0.04 };
@@ -81,6 +87,7 @@ const VISITAS: Record<string, [number, number, number][]> = {
   lanchonete: [[11, 14, 15]],
   restaurante: [[11, 14, 10], [18, 21, 15]],
   loja: [[10, 20, 8]],
+  coroa: [[10, 22, 12]],
 };
 /** Quartos que uma unidade de limpeza arruma por dia (10h–17h). */
 const QUARTOS_POR_LIMPEZA_DIA = 20;
@@ -127,19 +134,21 @@ export class Inquilinos {
       if (!m) continue;
       this.estados.set(u.uid, {
         uid: u.uid, tipo: u.tipo, situacao: m === 'cliente' ? 'ocupada' : 'vaga', preco: 'normal',
-        satisfacao: 70, componentes: { estresse: 0, ruido: 0, servicos: 0, preco: 0, clientes: 0 },
-        avisos: 0, desvalorizado: false, estresseClientes: 0, clientesHoje: 0,
+        satisfacao: 70, componentes: { estresse: 0, ruido: 0, servicos: 0, preco: 0, clientes: 0, sujeira: 0 },
+        avisos: 0, desvalorizado: false, estresseClientes: 0, clientesHoje: 0, limpavel: false,
       });
     }
     this.versao++;
   }
 
   /** Recalcula ruído e acesso a comida (depende só do prédio). */
-  atualizarVizinhanca(mundo: Mundo, roteador: Roteador): void {
+  atualizarVizinhanca(mundo: Mundo, roteador: Roteador, roteadorEquipe: Roteador): void {
     const unidades = [...mundo.unidades.values()];
     const barulhentas = unidades.filter((u) => tipo(u.tipo).ruido_emite > 0);
     const comidas = unidades.filter((u) => tipo(u.tipo).categoria === 'comida');
+    const limpezas = unidades.filter((u) => u.tipo === 'limpeza');
     const servicoPorTrecho = new Map<string, boolean>();
+    const limpezaPorTrecho = new Map<string, boolean>();
 
     for (const e of this.estados.values()) {
       const u = mundo.unidades.get(e.uid)!;
@@ -173,6 +182,18 @@ export class Inquilinos {
       }
       e.componentes.servicos = servicos;
       e.componentes.preco = NIVEIS_PRECO[e.preco].satisfacao;
+
+      // Limpeza: a equipe precisa chegar ao quarto (pode usar elevador de serviço).
+      if (t.categoria === 'hotel') {
+        const x = centro(u);
+        const chave = `${u.y}:${roteadorEquipe.segmentoEm(x, u.y)}`;
+        let ok = limpezaPorTrecho.get(chave);
+        if (ok === undefined) {
+          ok = limpezas.some((l) => roteadorEquipe.rota(centro(l), l.y, x, u.y) !== null);
+          limpezaPorTrecho.set(chave, ok);
+        }
+        e.limpavel = ok;
+      }
     }
     this.versao++;
   }
@@ -180,7 +201,7 @@ export class Inquilinos {
   /** Satisfação esperada sem contar o estresse (usada para atrair inquilinos). */
   expectativa(e: EstadoUnidade): number {
     const c = e.componentes;
-    return clamp(90 - c.ruido + c.servicos + c.preco);
+    return clamp(90 - c.ruido + c.servicos + c.preco - c.sujeira);
   }
 
   mudarPreco(uid: number, nivel: NivelPreco): boolean {
@@ -251,7 +272,7 @@ export class Inquilinos {
     this.creditoLimpeza += (equipes * QUARTOS_POR_LIMPEZA_DIA) / HORAS_LIMPEZA;
     for (const e of this.estados.values()) {
       if (this.creditoLimpeza < 1) break;
-      if (e.situacao !== 'suja') continue;
+      if (e.situacao !== 'suja' || !e.limpavel) continue;
       e.situacao = 'vaga';
       this.creditoLimpeza--;
       this.versao++;
@@ -276,7 +297,7 @@ export class Inquilinos {
 
   cliente(uid: number, p: Pessoa, mundo: Mundo): void {
     const e = this.estados.get(uid);
-    if (!e) return;
+    if (!e || p.tipo === 'inspetor') return;
     e.clientesHoje++;
     e.estresseClientes = e.estresseClientes * 0.9 + p.estresse * 0.1;
     const t = tipo(mundo.unidades.get(uid)?.tipo ?? e.tipo);
@@ -300,9 +321,10 @@ export class Inquilinos {
   // ---------------------------------------------------------- por dia
 
   /** Meia-noite: atualiza a satisfação de cada unidade. */
-  fimDoDia(populacao: Populacao): void {
+  fimDoDia(populacao: Populacao, semReciclagem: boolean): void {
     for (const e of this.estados.values()) {
       const c = e.componentes;
+      c.sujeira = semReciclagem ? PENALIDADE_SUJEIRA : 0;
       if (e.situacao === 'vaga' && (e.tipo === 'escritorio' || e.tipo === 'apartamento' || e.tipo === 'loja')) {
         c.estresse = 0;
         c.clientes = 0;
@@ -316,7 +338,7 @@ export class Inquilinos {
       // Loja sem movimento: o lojista reclama.
       c.clientes = e.tipo === 'loja' && e.clientesHoje < 5 ? -20 : 0;
       e.clientesHoje = 0;
-      const hoje = clamp(100 - c.estresse * 0.6 - c.ruido + c.servicos + c.preco + c.clientes);
+      const hoje = clamp(100 - c.estresse * 0.6 - c.ruido + c.servicos + c.preco + c.clientes - c.sujeira);
       e.satisfacao = e.satisfacao * 0.65 + hoje * 0.35;
     }
     this.versao++;

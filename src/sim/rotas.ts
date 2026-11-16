@@ -44,12 +44,15 @@ export class Roteador {
   private cache = new Map<string, Perna[] | null>();
   calculadas = 0;
 
+  /** `incluirServico`: equipe pode usar elevadores de serviço. */
+  constructor(private readonly incluirServico = false) {}
+
   reconstruir(mundo: Mundo, transito: Transito): void {
     this.calcularSegmentos(mundo);
     this.elementos = [];
     this.porAndar.clear();
     for (const p of transito.pocos.values()) {
-      if (p.tipo === 'elevador_servico') continue; // só equipe (fases futuras)
+      if (p.tipo === 'elevador_servico' && !this.incluirServico) continue; // só equipe
       this.adicionar({ uid: p.uid, x: p.xCentro, andares: [...p.paradasValidas].sort((a, b) => a - b), poco: p, tempo: 0, esforco: 0 });
     }
     for (const e of transito.escadas) {

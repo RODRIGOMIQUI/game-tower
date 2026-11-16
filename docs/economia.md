@@ -111,6 +111,24 @@ planejado.
 Lanchonete fatura ~$11 mil/tri nesse prédio, abaixo da estimativa de ~$24 mil
 da §3: só 33 escritórios e um elevador limitam o movimento. Revisar na Fase 9.
 
+## 4.2 Partida completa (Fase 4)
+
+`LONGO=1 npm run sim:partida`: um construtor automático joga a carreira com
+as metas reais de população e **dinheiro ilimitado** (isola a progressão).
+
+| Nível | Dia de jogo | População |
+|---|---|---|
+| 2★ | 2 | 1.194 |
+| 3★ | 3 | 1.854 |
+| 4★ | 4 (fim de semana) | 4.680 |
+| 5★ (inspeção aprovada, estresse 0) | 7 | 9.242 |
+| Lendária (150/150 convidados) | 9 | 13.464 |
+
+Com dinheiro ilimitado tudo acontece em ~9 dias; na carreira real o caixa é o
+freio. Pontos para a Fase 9: a inspeção às 10h é fácil demais (o prédio está
+calmo) e a simulação com ~12 mil pessoas roda perto de 45 minutos de jogo por
+segundo, no limite da velocidade 8× (alvo da Fase 8).
+
 ## 5. Balanceamento: como vamos ajustar
 
 1. Todo número fica em `packages/data/*.json`, sem constantes mágicas no código.

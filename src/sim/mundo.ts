@@ -13,6 +13,7 @@ export type CodigoEstrutura = (typeof Est)[keyof typeof Est];
 export const ESTRUTURA_POR_TIPO: Record<string, CodigoEstrutura> = {
   piso: Est.Piso,
   lobby: Est.Lobby,
+  sky_lobby: Est.Lobby,
   escavacao: Est.Escavado,
 };
 

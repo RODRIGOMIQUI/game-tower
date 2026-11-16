@@ -55,6 +55,7 @@ export class Hud {
   private readonly esperaEl = el('span', 'valor');
   private readonly triEl = el('span', 'valor');
   private readonly estrelaEl = el('span', 'estrelas');
+  private readonly progressoEl = el('span', 'progresso');
   private readonly dataEl = el('span', 'valor');
   private readonly horaEl = el('span', 'valor');
   private readonly sandboxEl = el('span', 'sandbox', 'SANDBOX');
@@ -101,6 +102,7 @@ export class Hud {
       bloco('População', this.popEl),
       bloco('Esperando', this.esperaEl),
       this.estrelaEl,
+      this.progressoEl,
       this.sandboxEl,
       el('div', 'espaco'),
       this.dataEl,
@@ -115,7 +117,7 @@ export class Hud {
     raiz.append(el('h3', undefined, 'Ferramentas'), demolir);
     const atalhoDe = Object.fromEntries(Object.entries(ATALHOS).map(([k, v]) => [v, k]));
     for (const [titulo, cats] of GRUPOS) {
-      const tipos = TIPOS.filter((t) => cats.includes(t.categoria) && t.id !== 'sky_lobby');
+      const tipos = TIPOS.filter((t) => cats.includes(t.categoria));
       if (!tipos.length) continue;
       raiz.append(el('h3', undefined, titulo));
       for (const t of tipos) raiz.append(this.itemPaleta(t.id, t.nome, COR_CATEGORIA[t.categoria], detalhe(t), atalhoDe[t.id]));
@@ -148,12 +150,31 @@ export class Hud {
       `${inteiro(p.noPredio)} no prédio agora · estresse médio ${p.estresseMedio.toFixed(0)} · ${p.desistenciasHoje} desistências hoje`;
     this.esperaEl.textContent = inteiro(p.esperando);
     this.esperaEl.style.color = p.esperando > 100 ? 'var(--erro)' : '';
-    this.estrelaEl.textContent = '★'.repeat(e.estrela) + '☆'.repeat(5 - e.estrela);
+    this.estrelaEl.textContent = e.estrela >= 6 ? '★★★★★ Lendária' : '★'.repeat(e.estrela) + '☆'.repeat(5 - e.estrela);
+    this.atualizarProgresso(e);
     this.dataEl.textContent = formatarData(e.tick);
     this.horaEl.textContent = formatarHora(e.tick);
     this.sandboxEl.hidden = !e.sandbox;
     for (const [v, b] of this.botoesVel) b.classList.toggle('ativo', v === e.velocidade);
     this.atualizarTravas(e);
+  }
+
+  private atualizarProgresso(e: EstadoResumo): void {
+    const p = e.progresso;
+    if (!p.proxima) {
+      this.progressoEl.hidden = true;
+      return;
+    }
+    const pop = p.requisitos[0];
+    const faltam = p.requisitos.filter((r) => !r.ok).length;
+    const alvo = p.proxima >= 6 ? 'Lendária' : `${p.proxima}★`;
+    const pct = Math.min(100, Math.round((e.populacao / Math.max(1, p.populacaoAlvo)) * 100));
+    this.progressoEl.hidden = false;
+    this.progressoEl.innerHTML = `<span class="rotulo">${alvo}</span><span class="barrinha"><span style="width:${pct}%"></span></span>${faltam && pop?.ok ? ` <b>${faltam}</b>` : ''}`;
+    this.progressoEl.title =
+      `Para ${p.proxima >= 6 ? 'o nível Lendário' : `${p.proxima} estrelas`}:\n` +
+      p.requisitos.map((r) => `${r.ok ? '✓' : '✗'} ${r.texto}`).join('\n') +
+      (p.etapa ? `\n\n${p.etapa}` : '');
   }
 
   /** Desabilita itens acima da estrela atual ou de fases futuras. */
@@ -184,7 +205,7 @@ export class Hud {
     this.statusPlano.className = tipo;
   }
 
-  aviso(texto: string, tipo: 'ok' | 'erro' | 'info' = 'ok'): void {
+  aviso(texto: string, tipo: 'ok' | 'erro' | 'info' | 'conquista' = 'ok', ms = 2600): void {
     const raiz = document.getElementById('avisos')!;
     const a = el('div', `aviso painel ${tipo}`, texto);
     raiz.prepend(a);
@@ -192,7 +213,7 @@ export class Hud {
     setTimeout(() => {
       a.classList.add('saindo');
       setTimeout(() => a.remove(), 400);
-    }, 2600);
+    }, ms);
   }
 }
 

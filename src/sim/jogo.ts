@@ -4,8 +4,9 @@
 import { executarPlano, planejarConstrucao, planejarDemolicao, type Contexto, type Plano } from './construcao';
 import { ehElevador, tipo } from './dados';
 import { Est, LARGURA, Mundo, type SnapshotMundo } from './mundo';
-import { Inquilinos, type CategoriaReceita, type NivelPreco } from './inquilinos';
-import { Populacao, type Ambiente } from './pessoas';
+import { Inquilinos, POPULACAO_EXIGE_RECICLAGEM, type CategoriaReceita, type NivelPreco } from './inquilinos';
+import { centro, Populacao, type Ambiente, type Entrada, type Estacionamento } from './pessoas';
+import { Progressao, type EventoProgressao, type Progresso } from './progressao';
 import { inicioDeTrimestre, MIN_POR_DIA, TICK_INICIAL } from './relogio';
 import { Rng } from './rng';
 import { Roteador } from './rotas';
@@ -42,13 +43,14 @@ export interface Livro {
 
 export type EventoJogo =
   | { tipo: 'trimestre'; tick: number; manutencao: number; livro: Livro; saidas: number; caixa: number }
-  | { tipo: 'falencia'; tick: number };
+  | { tipo: 'falencia'; tick: number }
+  | EventoProgressao;
 
 /** Trimestres seguidos com caixa negativo até a falência (modo carreira). */
 export const TRIMESTRES_ATE_FALENCIA = 2;
 
 function livroVazio(): Livro {
-  return { receitas: { aluguel: 0, vendas: 0, hotel: 0, comida: 0 }, construcao: 0, manutencao: 0 };
+  return { receitas: { aluguel: 0, vendas: 0, hotel: 0, comida: 0, estacionamento: 0 }, construcao: 0, manutencao: 0 };
 }
 
 export interface OpcoesJogo {
@@ -56,19 +58,25 @@ export interface OpcoesJogo {
   dinheiro?: number;
   estrela?: number;
   sandbox?: boolean;
+  /** Multiplica as metas de população das estrelas (testes). */
+  escalaPopulacao?: number;
 }
 
 export class Jogo {
   mundo = new Mundo();
   tick = TICK_INICIAL;
   dinheiro: number;
-  estrela: number;
   sandbox: boolean;
   rng: Rng;
   /** Incrementa sempre que o mundo muda; o render usa para saber quando redesenhar. */
   versaoMundo = 0;
   readonly transito = new Transito();
   readonly roteador = new Roteador();
+  /** Rotas da equipe (podem usar elevador de serviço). */
+  readonly roteadorEquipe = new Roteador(true);
+  readonly progressao: Progressao;
+  /** Eventos gerados dentro de callbacks, entregues no fim de `avancar`. */
+  private pendentes: EventoJogo[] = [];
   readonly populacao: Populacao;
   readonly inquilinos: Inquilinos;
   /** Unidades sem rota a partir da rua. */
@@ -83,9 +91,28 @@ export class Jogo {
     this.rng = new Rng(opts.seed ?? 1);
     this.sandbox = opts.sandbox ?? false;
     this.dinheiro = opts.dinheiro ?? (this.sandbox ? DINHEIRO_SANDBOX : DINHEIRO_INICIAL);
-    this.estrela = opts.estrela ?? 1;
+    this.progressao = new Progressao(opts.escalaPopulacao ?? 1);
+    this.progressao.estrela = opts.estrela ?? 1;
     this.inquilinos = new Inquilinos({ creditar: (c, v) => this.creditar(c, v) });
     this.populacao = new Populacao(this.ambiente());
+  }
+
+  get estrela(): number {
+    return this.progressao.estrela;
+  }
+
+  progresso(): Progresso {
+    return this.progressao.progresso(this.contextoProgressao());
+  }
+
+  private contextoProgressao() {
+    return {
+      mundo: this.mundo,
+      populacao: this.populacao,
+      estados: this.inquilinos.estados.values(),
+      semAcesso: this.semAcessoSet,
+      rng: this.rng,
+    };
   }
 
   private creditar(categoria: CategoriaReceita, valor: number): void {
@@ -104,10 +131,17 @@ export class Jogo {
       roteador: this.roteador,
       rng: this.rng,
       entradas: entradas(this.mundo),
+      estacionamentos: estacionamentos(this.mundo),
       comidas: [...this.mundo.unidades.values()].filter((u) => tipo(u.tipo).categoria === 'comida'),
       eventos: {
-        cliente: (uid, p) => this.inquilinos.cliente(uid, p, this.mundo),
-        partiu: (p) => this.inquilinos.partiu(p, this.populacao),
+        cliente: (uid, p) => {
+          this.inquilinos.cliente(uid, p, this.mundo);
+          this.progressao.cliente(p);
+        },
+        partiu: (p) => {
+          this.inquilinos.partiu(p, this.populacao);
+          this.pendentes.push(...this.progressao.partiu(p, this.tick));
+        },
       },
     };
   }
@@ -170,13 +204,14 @@ export class Jogo {
     this.versaoMundo++;
     const despejadas = this.transito.sincronizar(this.mundo);
     this.roteador.reconstruir(this.mundo, this.transito);
+    this.roteadorEquipe.reconstruir(this.mundo, this.transito);
     this.populacao.atualizarAmbiente(this.ambiente());
     this.inquilinos.sincronizar(this.mundo);
     this.populacao.sincronizarUnidades();
     this.populacao.replanejarEmMovimento(despejadas);
     this.semAcesso = this.populacao.unidadesSemAcesso();
     this.semAcessoSet = new Set(this.semAcesso);
-    this.inquilinos.atualizarVizinhanca(this.mundo, this.roteador);
+    this.inquilinos.atualizarVizinhanca(this.mundo, this.roteador, this.roteadorEquipe);
   }
 
   private contextoEconomia() {
@@ -195,17 +230,34 @@ export class Jogo {
       this.tick++;
       const minuto = this.tick % MIN_POR_DIA;
       if (minuto === 0) {
-        this.inquilinos.fimDoDia(this.populacao);
+        this.inquilinos.fimDoDia(this.populacao, this.semReciclagem());
+        const carros = this.populacao.consumirUsosEstacionamento();
+        if (carros) this.creditar('estacionamento', carros * tipo('estacionamento').receita_valor);
         this.populacao.novoDia(this.tick);
+        eventos.push(...this.progressao.diario(this.tick, this.contextoProgressao()));
       }
       if (inicioDeTrimestre(this.tick)) eventos.push(...this.fecharTrimestre());
-      if (minuto % 60 === 0) this.inquilinos.hora(this.tick, this.contextoEconomia());
+      if (minuto % 60 === 0) {
+        this.inquilinos.hora(this.tick, this.contextoEconomia());
+        eventos.push(...this.progressao.hora(this.tick, this.contextoProgressao()));
+      }
       // Filas mudam ao longo do dia: rotas são recalculadas a cada 15 minutos.
       if (minuto % INTERVALO_ROTAS === 0) this.roteador.limparCache();
       this.transito.passo(this.tick, Math.floor(minuto / 60), this.populacao);
       this.populacao.passo(this.tick);
+      if (this.pendentes.length) {
+        eventos.push(...this.pendentes);
+        this.pendentes = [];
+      }
     }
     return eventos;
+  }
+
+  /** Acima de 3.000 pessoas, a torre precisa de reciclagem (docs/gdd.md §7). */
+  semReciclagem(): boolean {
+    if (this.populacao.total <= POPULACAO_EXIGE_RECICLAGEM) return false;
+    for (const u of this.mundo.unidades.values()) if (u.tipo === 'reciclagem') return false;
+    return true;
   }
 
   manutencaoTrimestral(): number {
@@ -214,7 +266,7 @@ export class Jogo {
     return total;
   }
 
-  /** População = moradores + funcionários (+ hóspedes nas próximas fases). */
+  /** População = moradores + funcionários + hóspedes. */
   populacaoTotal(): number {
     return this.populacao.total;
   }
@@ -278,9 +330,21 @@ export interface ResumoPoco {
   atendidos: number;
 }
 
-/** Entradas do prédio: pontas de cada trecho do térreo que tenha lobby. */
-function entradas(m: Mundo): number[] {
-  const r: number[] = [];
+/** Estacionamentos que têm rampa no mesmo andar. */
+function estacionamentos(m: Mundo): Estacionamento[] {
+  const unidades = [...m.unidades.values()];
+  const comRampa = new Set(unidades.filter((u) => u.tipo === 'rampa_estacionamento').map((u) => u.y));
+  return unidades
+    .filter((u) => u.tipo === 'estacionamento' && comRampa.has(u.y))
+    .map((u) => ({ uid: u.uid, x: centro(u), y: u.y, vagas: tipo(u.tipo).capacidade }));
+}
+
+/** Entradas do prédio: pontas de cada trecho do térreo que tenha lobby, e estações de metrô. */
+function entradas(m: Mundo): Entrada[] {
+  const r: Entrada[] = [];
+  for (const u of m.unidades.values()) {
+    if (u.tipo === 'metro') r.push({ x: centro(u), y: u.y + u.altura - 1, tipo: 'metro' });
+  }
   let ini = -1;
   let temLobby = false;
   for (let x = 0; x <= LARGURA; x++) {
@@ -289,7 +353,7 @@ function entradas(m: Mundo): number[] {
       if (ini < 0) ini = x;
       if (e === Est.Lobby) temLobby = true;
     } else if (ini >= 0) {
-      if (temLobby) r.push(ini + 0.5, x - 0.5);
+      if (temLobby) r.push({ x: ini + 0.5, y: 0, tipo: 'rua' }, { x: x - 0.5, y: 0, tipo: 'rua' });
       ini = -1;
       temLobby = false;
     }

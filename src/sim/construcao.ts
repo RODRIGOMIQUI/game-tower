@@ -155,7 +155,7 @@ function planejarEstrutura(
       if (!dentro(x, y)) continue;
       const atual = m.est(x, y);
       if (atual === codigo) continue; // já existe: ignora sem erro
-      const motivo = validarCelula(m, codigo, x, y, atual, temEstrutura);
+      const motivo = validarCelula(m, t.id, codigo, x, y, atual, temEstrutura);
       const item: ItemPlano = {
         tipo: t.id, x, y, largura: 1, altura: 1, estrutura: true, custo: t.custo, ok: !motivo, motivo,
       };
@@ -177,8 +177,12 @@ function distanciaDoChao(y: number): number {
   return y >= 0 ? y : -y - 0.5;
 }
 
+/** Primeiro andar (y) onde cabe um sky lobby: o 15º. */
+export const ANDAR_MIN_SKY_LOBBY = 14;
+
 function validarCelula(
   m: Mundo,
+  id: string,
   codigo: CodigoEstrutura,
   x: number,
   y: number,
@@ -192,9 +196,13 @@ function validarCelula(
       if (y > 0 && !temEstrutura(x, y - 1)) return 'Sem apoio no andar de baixo';
       return undefined;
     case Est.Lobby:
-      if (y !== 0) return 'Lobby só no térreo';
+      if (id === 'sky_lobby') {
+        if (y < ANDAR_MIN_SKY_LOBBY) return 'Sky lobby só a partir do 15º andar';
+        if (atual === Est.Vazio && !temEstrutura(x, y - 1)) return 'Sem apoio no andar de baixo';
+      } else if (y !== 0) return 'Lobby só no térreo';
       if (atual !== Est.Vazio && atual !== Est.Piso) return 'Já construído';
-      if (m.uidEm(x, y)) return 'Espaço ocupado';
+      // Elevadores e escadas podem ficar sobre lobby; outras unidades não.
+      if (m.uidEm(x, y) && tipo(m.unidadeEm(x, y)!.tipo).categoria !== 'transito') return 'Espaço ocupado';
       return undefined;
     case Est.Escavado:
       if (y >= 0) return 'Escavação só no subsolo';

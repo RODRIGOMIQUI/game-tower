@@ -1,5 +1,5 @@
 // Utilitários para montar prédios em testes e no cenário headless.
-import { Jogo } from './jogo';
+import { Jogo, type EventoJogo } from './jogo';
 import { Estado } from './pessoas';
 
 export function construir(j: Jogo, item: string, x0: number, y0: number, x1 = x0, y1 = y0): void {
@@ -20,8 +20,8 @@ export function contarEstados(j: Jogo): Record<string, number> {
 }
 
 /** Avança até a hora `h` (0–23) do dia atual ou do seguinte. */
-export function avancarAte(j: Jogo, h: number): void {
+export function avancarAte(j: Jogo, h: number): EventoJogo[] {
   const alvo = h * 60;
   const agora = j.tick % 1440;
-  j.avancar(alvo > agora ? alvo - agora : 1440 - agora + alvo);
+  return j.avancar(alvo > agora ? alvo - agora : 1440 - agora + alvo);
 }

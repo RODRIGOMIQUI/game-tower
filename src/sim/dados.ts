@@ -53,9 +53,9 @@ export function ehEscada(id: string): boolean {
   return id === 'escada' || id === 'escada_rolante';
 }
 
-/** Tipos ainda não implementados (chegam em fases futuras). */
-export function disponivelNaFase(id: string): boolean {
-  return id !== 'sky_lobby';
+/** Tipos ainda não implementados (chegam em fases futuras). Desde a Fase 4, todos estão. */
+export function disponivelNaFase(_id: string): boolean {
+  return true;
 }
 
 /** Manutenção trimestral por carro de elevador (docs/economia.md §2). */

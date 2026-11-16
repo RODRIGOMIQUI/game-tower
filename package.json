@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "data": "node tools/csv-para-json.mjs",
-    "sim": "vitest run src/sim/cenario.test.ts src/sim/carreira.test.ts --silent=false"
+    "sim": "vitest run src/sim/cenario.test.ts src/sim/carreira.test.ts --silent=false",
+    "sim:partida": "vitest run src/sim/partida.test.ts --silent=false"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

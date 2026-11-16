@@ -74,9 +74,15 @@ export class Poco {
   ) {
     this.capacidade = tipoCapacidade(tipo);
     this.paradasValidas = new Set();
-    for (let y = ymin; y <= ymax; y++) {
+    this.atualizarParadas(mundo);
+  }
+
+  /** Recalcula onde o carro pode parar (um sky lobby novo vira parada do expresso). */
+  atualizarParadas(mundo: Mundo): void {
+    this.paradasValidas.clear();
+    for (let y = this.ymin; y <= this.ymax; y++) {
       // Expresso só para em lobbies e subsolos.
-      if (tipo !== 'elevador_expresso' || y < 0 || mundo.est(x, y) === Est.Lobby) this.paradasValidas.add(y);
+      if (this.tipo !== 'elevador_expresso' || y < 0 || mundo.est(this.x, y) === Est.Lobby) this.paradasValidas.add(y);
     }
   }
 
@@ -407,7 +413,9 @@ export class Transito {
     for (const u of mundo.unidades.values()) {
       if (ehElevador(u.tipo)) {
         vistos.add(u.uid);
-        if (!this.pocos.has(u.uid)) this.pocos.set(u.uid, novoPoco(u, mundo));
+        const p = this.pocos.get(u.uid);
+        if (!p) this.pocos.set(u.uid, novoPoco(u, mundo));
+        else p.atualizarParadas(mundo);
       } else if (ehEscada(u.tipo)) {
         const rolante = u.tipo === 'escada_rolante';
         this.escadas.push({

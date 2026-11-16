@@ -239,9 +239,27 @@ imediatamente acima/abaixo. Overlay de ruído mostra isso em calor.
 
 **População** = moradores + funcionários + hóspedes da noite atual.
 
-**Inspeção:** ao cumprir os números, um inspetor visita a torre num dia
-sorteado. Ele percorre unidades aleatórias; se o estresse médio dele for
-< 50 ao fim da visita, aprova. Reprovado → nova visita em 1 trimestre.
+- A checagem é feita à meia-noite. O progresso aparece na barra superior
+  (passe o mouse para ver cada requisito).
+- **Inspeção (5★):** cumpridos os demais requisitos, o inspetor chega às 10h
+  do dia seguinte e visita 5 unidades ocupadas sorteadas, 20 min em cada. Se o
+  maior estresse dele ficar abaixo de 50 e ele completar o roteiro, aprova.
+  Reprovado: nova visita em 1 trimestre.
+- **Inauguração (Lendária):** com a Coroa construída, 150 convidados chegam às
+  18h e sobem até o topo. Sucesso se ao menos 70% chegarem, com estresse médio
+  abaixo de 50 (avaliado às 23h). Fracasso: nova tentativa em 1 trimestre.
+
+### 8.1 Infraestrutura
+
+| Item | Efeito |
+|---|---|
+| Sky lobby (3★) | lobby a partir do 15º andar; expresso só para em lobbies e subsolos, então vira ponto de baldeação |
+| Elevador de serviço (2★) | não leva o público; a equipe de limpeza usa para alcançar quartos |
+| Limpeza | só limpa quartos alcançáveis a partir dela (por qualquer elevador ou escada) |
+| Reciclagem (3★) | acima de 3.000 pessoas, sem ela todas as unidades perdem 15 de satisfação |
+| Estacionamento + rampa (3★) | 35% de moradores e funcionários vêm de carro se houver vaga e rampa no mesmo andar; $150 por carro/dia |
+| Metrô (4★) | nova entrada no subsolo; 40% das pessoas chegam por ele |
+| Segurança, centro médico | requisitos de estrela; efeitos nos eventos (Fase 5) |
 
 ---
 

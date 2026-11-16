@@ -22,7 +22,7 @@ export const Estado = {
 } as const;
 export type CodigoEstado = (typeof Estado)[keyof typeof Estado];
 
-export type TipoPessoa = 'funcionario' | 'morador' | 'hospede' | 'visitante';
+export type TipoPessoa = 'funcionario' | 'morador' | 'hospede' | 'visitante' | 'inspetor';
 
 /** Unidades cujos ocupantes são pessoas permanentes. */
 export const OCUPANTES_POR_TIPO: Record<string, TipoPessoa> = {
@@ -31,13 +31,19 @@ export const OCUPANTES_POR_TIPO: Record<string, TipoPessoa> = {
 };
 
 /** Ticks de espera por elevador tolerados antes de o estresse subir. */
-export const PACIENCIA: Record<TipoPessoa, number> = { funcionario: 30, morador: 45, hospede: 45, visitante: 40 };
+export const PACIENCIA: Record<TipoPessoa, number> = { funcionario: 30, morador: 45, hospede: 45, visitante: 40, inspetor: 30 };
+/** Chance de quem mora/trabalha vir de carro (se houver vaga). */
+export const CHANCE_CARRO = 0.35;
+/** Chance de vir de metrô (se houver estação). */
+export const CHANCE_METRO = 0.4;
+/** Tempo do inspetor em cada unidade (ticks). */
+export const TEMPO_INSPECAO = 20;
 /** Estresse ganho por tick de espera além da paciência. */
 export const ESTRESSE_POR_TICK = 1.5;
 export const ESTRESSE_IRRITADO = 40;
 export const ESTRESSE_FURIOSO = 70;
 /** Quanto tempo se fica em cada tipo de unidade visitada (ticks). */
-export const PERMANENCIA: Record<string, number> = { lanchonete: 30, restaurante: 50, loja: 30 };
+export const PERMANENCIA: Record<string, number> = { lanchonete: 30, restaurante: 50, loja: 30, coroa: 60 };
 
 type Acao = 'ir_casa' | 'sair' | 'comer' | 'visitar';
 interface Compromisso {
@@ -77,6 +83,27 @@ export interface Pessoa {
   diaChegada: number;
   /** Já entrou no prédio alguma vez (hóspedes/visitantes). */
   chegou: boolean;
+  /** Estacionamento onde deixou o carro (0 = não veio de carro). */
+  vaga: number;
+  /** Inspetor: próximas unidades a visitar. */
+  roteiro: number[];
+  /** Participante de evento especial (inauguração). */
+  evento: boolean;
+  /** Maior estresse atingido. */
+  pico: number;
+}
+
+export interface Entrada {
+  x: number;
+  y: number;
+  tipo: 'rua' | 'metro';
+}
+
+export interface Estacionamento {
+  uid: number;
+  x: number;
+  y: number;
+  vagas: number;
 }
 
 /** Avisos da população para a economia. */
@@ -92,8 +119,10 @@ export interface Ambiente {
   transito: Transito;
   roteador: Roteador;
   rng: Rng;
-  /** Pontos de entrada no térreo (coluna). */
-  entradas: number[];
+  /** Por onde se entra e sai: pontas do lobby no térreo e estações de metrô. */
+  entradas: Entrada[];
+  /** Estacionamentos com rampa no mesmo andar. */
+  estacionamentos: Estacionamento[];
   /** Unidades onde se come. */
   comidas: Unidade[];
   eventos: EventosPessoas;
@@ -114,6 +143,8 @@ export class Populacao implements Passageiros {
   private readonly porUnidade = new Map<number, number[]>();
   /** Pessoas consumindo (ou a caminho de) cada unidade de comida/comércio. */
   private readonly lotacao = new Map<number, number>();
+  private readonly vagasOcupadas = new Map<number, number>();
+  private usosEstacionamento = 0;
   private proximoId = 1;
   private tickAtual = 0;
   desistenciasHoje = 0;
@@ -126,7 +157,7 @@ export class Populacao implements Passageiros {
 
   get total(): number {
     let n = 0;
-    for (const p of this.pessoas.values()) if (p.tipo !== 'visitante') n++;
+    for (const p of this.pessoas.values()) if (p.tipo !== 'visitante' && p.tipo !== 'inspetor') n++;
     return n;
   }
 
@@ -173,11 +204,28 @@ export class Populacao implements Passageiros {
     this.porUnidade.set(quarto.uid, ids);
   }
 
-  /** Visitante de fora para uma unidade de comida/comércio. */
-  visitar(alvo: Unidade, minuto: number, tick: number): void {
+  /** Visitante de fora para uma unidade de comida/comércio/marco. */
+  visitar(alvo: Unidade, minuto: number, tick: number, evento = false): void {
     const p = this.novo('visitante', 0, tick);
     p.alvo = alvo.uid;
+    p.evento = evento;
     p.agenda = [{ minuto, acao: 'visitar' }];
+  }
+
+  /** Inspetor percorre as unidades do roteiro, nessa ordem. */
+  inspecionar(roteiro: number[], minuto: number, tick: number): Pessoa {
+    const p = this.novo('inspetor', 0, tick);
+    p.alvo = roteiro[0] ?? 0;
+    p.roteiro = roteiro.slice(1);
+    p.agenda = [{ minuto, acao: 'visitar' }];
+    return p;
+  }
+
+  /** Carros que usaram o estacionamento desde a última consulta (zera a contagem). */
+  consumirUsosEstacionamento(): number {
+    const n = this.usosEstacionamento;
+    this.usosEstacionamento = 0;
+    return n;
   }
 
   private novo(tp: TipoPessoa, casa: number, tick: number): Pessoa {
@@ -185,7 +233,7 @@ export class Populacao implements Passageiros {
       id: this.proximoId++, tipo: tp, casa, alvo: 0, estado: Estado.Fora, x: 0, y: 0,
       rota: null, perna: 0, destino: null, local: 0, agenda: [], proximo: 0, ate: 0,
       poco: 0, carro: 0, desde: 0, andarDestino: 0, escadaDe: 0, estresse: 0,
-      diaChegada: data(tick).diaTotal, chegou: false,
+      diaChegada: data(tick).diaTotal, chegou: false, vaga: 0, roteiro: [], evento: false, pico: 0,
     };
     this.pessoas.set(p.id, p);
     return p;
@@ -196,6 +244,7 @@ export class Populacao implements Passageiros {
     if (!p) return;
     this.sairDoTransporte(p);
     this.liberarLugar(p);
+    this.liberarVaga(p);
     this.pessoas.delete(id);
   }
 
@@ -216,7 +265,7 @@ export class Populacao implements Passageiros {
     const hoje = data(tick).diaTotal;
     for (const p of [...this.pessoas.values()]) {
       p.estresse *= 0.5;
-      if (p.tipo === 'visitante') {
+      if (p.tipo === 'visitante' || p.tipo === 'inspetor') {
         if (p.estado === Estado.Fora) this.partir(p);
         continue;
       }
@@ -280,8 +329,12 @@ export class Populacao implements Passageiros {
         case Estado.NaUnidade:
           if (p.estado === Estado.NaUnidade && p.ate && tick >= p.ate) {
             p.ate = 0;
-            // Fim da refeição/visita: visitante vai embora, os demais voltam.
-            this.irPara(p, p.tipo === 'visitante' ? { tipo: 'fora' } : { tipo: 'casa' });
+            // Fim da refeição/visita: inspetor segue o roteiro, visitante vai
+            // embora, os demais voltam para casa/trabalho/quarto.
+            if (p.tipo === 'inspetor') {
+              const prox = p.roteiro.shift();
+              if (prox === undefined || !this.irPara(p, { tipo: 'visita', uid: prox })) this.irPara(p, { tipo: 'fora' });
+            } else this.irPara(p, p.tipo === 'visitante' ? { tipo: 'fora' } : { tipo: 'casa' });
           } else if (p.proximo < p.agenda.length && minuto >= p.agenda[p.proximo]!.minuto) {
             this.executar(p, p.agenda[p.proximo++]!.acao);
           }
@@ -298,7 +351,10 @@ export class Populacao implements Passageiros {
         case Estado.Esperando: {
           const espera = tick - p.desde;
           const tol = PACIENCIA[p.tipo];
-          if (espera > tol) p.estresse = Math.min(100, p.estresse + ESTRESSE_POR_TICK);
+          if (espera > tol) {
+            p.estresse = Math.min(100, p.estresse + ESTRESSE_POR_TICK);
+            if (p.estresse > p.pico) p.pico = p.estresse;
+          }
           if (espera > tol * 2) this.desistir(p);
           break;
         }
@@ -318,7 +374,9 @@ export class Populacao implements Passageiros {
     if (acao === 'ir_casa') this.irPara(p, { tipo: 'casa' });
     else if (acao === 'sair') this.irPara(p, { tipo: 'fora' });
     else if (acao === 'comer') this.comer(p);
-    else if (!this.irAoLugar(p, p.alvo)) this.partir(p);
+    else if (p.tipo === 'inspetor') {
+      if (!this.irPara(p, { tipo: 'visita', uid: p.alvo })) this.partir(p);
+    } else if (!this.irAoLugar(p, p.alvo)) this.partir(p);
   }
 
   /** Escolhe uma unidade de comida com lugar e rota; sem opção, estresse. */
@@ -346,14 +404,16 @@ export class Populacao implements Passageiros {
 
   /** Começa a ir para `destino`. Devolve false se não houver rota. */
   private irPara(p: Pessoa, destino: Destino): boolean {
-    const { mundo, roteador, entradas, rng } = this.amb;
+    const { mundo, roteador, entradas } = this.amb;
     let x0 = p.x;
     let y0 = p.y;
+    let entrada: Entrada | Estacionamento | null = null;
     if (p.estado === Estado.Fora) {
       if (destino.tipo === 'fora') return true;
-      if (!entradas.length) return this.semAcesso(p);
-      x0 = entradas[rng.inteiro(0, entradas.length - 1)]!;
-      y0 = 0;
+      entrada = this.escolherEntrada(p, destino);
+      if (!entrada) return this.semAcesso(p);
+      x0 = entrada.x;
+      y0 = entrada.y;
     } else if (p.estado === Estado.NaUnidade) {
       const u = mundo.unidades.get(p.local);
       if (u) {
@@ -365,9 +425,10 @@ export class Populacao implements Passageiros {
     let x1: number;
     let y1: number;
     if (destino.tipo === 'fora') {
-      if (!entradas.length) return this.sairJa(p);
-      x1 = maisProxima(entradas, x0);
-      y1 = 0;
+      const saida = this.escolherSaida(p, x0, y0);
+      if (!saida) return this.sairJa(p);
+      x1 = saida.x;
+      y1 = saida.y;
     } else {
       const u = mundo.unidades.get(destino.tipo === 'casa' ? p.casa : destino.uid);
       if (!u) return false;
@@ -376,8 +437,19 @@ export class Populacao implements Passageiros {
       y1 = u.y;
     }
 
-    const rota = roteador.rota(x0, y0, x1, y1);
+    let rota = roteador.rota(x0, y0, x1, y1);
+    if (!rota && entrada && !('tipo' in entrada && entrada.tipo === 'rua')) {
+      // Entrada alternativa (carro/metrô) sem rota: tenta pela rua.
+      this.liberarVaga(p);
+      const rua = entradas.find((e) => e.tipo === 'rua');
+      if (rua) {
+        x0 = rua.x;
+        y0 = rua.y;
+        rota = roteador.rota(x0, y0, x1, y1);
+      }
+    }
     if (!rota) {
+      this.liberarVaga(p);
       if (p.estado === Estado.Fora) return this.semAcesso(p);
       if (destino.tipo === 'fora') return this.sairJa(p);
       return false;
@@ -393,6 +465,53 @@ export class Populacao implements Passageiros {
     return true;
   }
 
+  /** De onde a pessoa chega: estacionamento, metrô ou rua. */
+  private escolherEntrada(p: Pessoa, destino: Destino): Entrada | Estacionamento | null {
+    const { entradas, estacionamentos, rng } = this.amb;
+    if ((p.tipo === 'funcionario' || p.tipo === 'morador') && destino.tipo === 'casa' && estacionamentos.length) {
+      if (rng.proximo() < CHANCE_CARRO) {
+        const e = estacionamentos.find((e) => (this.vagasOcupadas.get(e.uid) ?? 0) < e.vagas);
+        if (e) {
+          p.vaga = e.uid;
+          this.vagasOcupadas.set(e.uid, (this.vagasOcupadas.get(e.uid) ?? 0) + 1);
+          this.usosEstacionamento++;
+          return e;
+        }
+      }
+    }
+    const metros = entradas.filter((e) => e.tipo === 'metro');
+    if (metros.length && rng.proximo() < CHANCE_METRO) return metros[rng.inteiro(0, metros.length - 1)]!;
+    const ruas = entradas.filter((e) => e.tipo === 'rua');
+    if (ruas.length) return ruas[rng.inteiro(0, ruas.length - 1)]!;
+    return metros[0] ?? null;
+  }
+
+  /** Para onde a pessoa vai ao sair: o carro dela, ou a entrada mais próxima. */
+  private escolherSaida(p: Pessoa, x: number, y: number): { x: number; y: number } | null {
+    if (p.vaga) {
+      const e = this.amb.estacionamentos.find((e) => e.uid === p.vaga);
+      if (e) return e;
+      this.liberarVaga(p);
+    }
+    let melhor: Entrada | null = null;
+    let dist = Infinity;
+    for (const e of this.amb.entradas) {
+      const d = Math.abs(e.y - y) * 20 + Math.abs(e.x - x);
+      if (d < dist) {
+        dist = d;
+        melhor = e;
+      }
+    }
+    return melhor;
+  }
+
+  private liberarVaga(p: Pessoa): void {
+    if (!p.vaga) return;
+    const n = this.vagasOcupadas.get(p.vaga) ?? 0;
+    if (n > 0) this.vagasOcupadas.set(p.vaga, n - 1);
+    p.vaga = 0;
+  }
+
   private semAcesso(p: Pessoa): boolean {
     p.estresse = Math.min(100, p.estresse + 5);
     return false;
@@ -401,10 +520,11 @@ export class Populacao implements Passageiros {
   /** Sem saída alcançável (ou desistência): a pessoa simplesmente vai embora. */
   private sairJa(p: Pessoa): boolean {
     this.liberarLugar(p);
+    this.liberarVaga(p);
     p.estado = Estado.Fora;
     p.rota = null;
     p.local = 0;
-    if (p.tipo === 'visitante' || (p.tipo === 'hospede' && p.chegou)) this.partir(p);
+    if (p.tipo === 'visitante' || p.tipo === 'inspetor' || (p.tipo === 'hospede' && p.chegou)) this.partir(p);
     return true;
   }
 
@@ -462,7 +582,8 @@ export class Populacao implements Passageiros {
     if (!d || d.tipo === 'fora') {
       p.estado = Estado.Fora;
       p.local = 0;
-      if (p.tipo === 'visitante' || p.tipo === 'hospede') this.partir(p);
+      this.liberarVaga(p);
+      if (p.tipo === 'visitante' || p.tipo === 'hospede' || p.tipo === 'inspetor') this.partir(p);
     } else if (d.tipo === 'casa') {
       p.estado = Estado.NaUnidade;
       p.local = p.casa;
@@ -470,7 +591,7 @@ export class Populacao implements Passageiros {
       const u = this.amb.mundo.unidades.get(d.uid);
       p.estado = Estado.NaUnidade;
       p.local = d.uid;
-      p.ate = this.tickAtual + (u ? (PERMANENCIA[u.tipo] ?? 30) : 30);
+      p.ate = this.tickAtual + (p.tipo === 'inspetor' ? TEMPO_INSPECAO : u ? (PERMANENCIA[u.tipo] ?? 30) : 30);
       p.estresse = Math.max(0, p.estresse - 10);
       this.amb.eventos.cliente(d.uid, p);
     }
@@ -574,7 +695,7 @@ export class Populacao implements Passageiros {
     for (const p of this.pessoas.values()) {
       if (p.estado !== Estado.Fora) noPredio++;
       if (p.estado === Estado.Esperando) esperando++;
-      if (p.tipo === 'visitante') visitantes++;
+      if (p.tipo === 'visitante' || p.tipo === 'inspetor') visitantes++;
       soma += p.estresse;
     }
     return {
@@ -607,7 +728,7 @@ export class Populacao implements Passageiros {
   }
 
   /**
-   * Unidades de uso (não estrutura, transporte ou serviço) sem rota a partir
+   * Unidades de uso (não estrutura, transporte, serviço ou acesso) sem rota a partir
    * da rua. Unidades no mesmo trecho de andar compartilham o resultado.
    */
   unidadesSemAcesso(): number[] {
@@ -616,12 +737,12 @@ export class Populacao implements Passageiros {
     const r: number[] = [];
     for (const u of mundo.unidades.values()) {
       const cat = tipo(u.tipo).categoria;
-      if (cat === 'estrutura' || cat === 'transito' || cat === 'servico') continue;
+      if (cat === 'estrutura' || cat === 'transito' || cat === 'servico' || cat === 'acesso') continue;
       const x = centro(u);
       const chave = `${u.y}:${roteador.segmentoEm(x, u.y)}`;
       let ok = porTrecho.get(chave);
       if (ok === undefined) {
-        ok = entradas.length > 0 && roteador.rota(entradas[0]!, 0, x, u.y) !== null;
+        ok = entradas.some((e) => roteador.rota(e.x, e.y, x, u.y) !== null);
         porTrecho.set(chave, ok);
       }
       if (!ok) r.push(u.uid);
@@ -632,10 +753,4 @@ export class Populacao implements Passageiros {
 
 export function centro(u: Unidade): number {
   return u.x + u.largura / 2;
-}
-
-function maisProxima(xs: number[], x: number): number {
-  let melhor = xs[0]!;
-  for (const v of xs) if (Math.abs(v - x) < Math.abs(melhor - x)) melhor = v;
-  return melhor;
 }

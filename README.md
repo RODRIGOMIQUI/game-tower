@@ -11,6 +11,7 @@ npm run dev          # http://localhost:5173  (sandbox: http://localhost:5173/?s
 npm test             # testes da simulação
 npm run typecheck
 npm run sim          # cenários headless: 2.000 pessoas (hora a hora) e 2 anos de carreira
+LONGO=1 npm run sim:partida   # partida completa ★1 → Lendária com construtor automático (minutos)
 npm run data         # regenera src/data/unidades.json a partir de docs/dados/unidades.csv
 ```
 
@@ -30,6 +31,10 @@ inspetor de uma unidade você vê situação, receita e satisfação (com o moti
 cada ponto) e ajusta o **preço**. Marcador amarelo = satisfação baixa; laranja =
 inquilino já recebeu aviso e pode sair no próximo fechamento. Caixa negativo em
 dois fechamentos seguidos = falência (exceto no sandbox).
+
+A barra ao lado das estrelas mostra o progresso para o próximo nível; passe o
+mouse para ver cada requisito (população, unidades exigidas, satisfação média,
+inspeção ou inauguração).
 
 ## Estrutura do código
 
@@ -57,7 +62,7 @@ src/
 | 1 | Fundação técnica: grade, câmera, construção, relógio | ✅ |
 | 2 | Pessoas e transporte vertical | ✅ |
 | 3 | Inquilinos e economia | ✅ |
-| 4 | Progressão e infraestrutura (MVP) | — |
+| 4 | Progressão e infraestrutura (MVP) | ✅ |
 | 5 | Eventos | — |
 | 6 | UX moderna: overlays, relatórios, save | — |
 | 7 | Arte e áudio finais | — |

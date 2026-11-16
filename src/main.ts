@@ -11,6 +11,7 @@ import { dinheiro } from './ui/formato';
 import { ATALHOS, DEMOLIR, Hud } from './ui/hud';
 import { Inspetor } from './ui/inspetor';
 import type { DaSim, Dinamico, EstadoResumo, ParaSim } from './worker/protocolo';
+import type { EventoProgressao } from './sim/progressao';
 
 const app = new Application();
 const raiz = document.getElementById('jogo')!;
@@ -115,7 +116,7 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
           if (ev.caixa < 0) hud.aviso('Caixa negativo! Dois trimestres seguidos assim e a torre vai à falência.', 'erro');
         } else if (ev.tipo === 'falencia') {
           document.getElementById('fim')!.hidden = false;
-        }
+        } else avisarProgressao(ev);
       }
       break;
   }
@@ -124,6 +125,42 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
 const sandbox = new URLSearchParams(location.search).get('sandbox') === '1';
 document.getElementById('novo-jogo')!.onclick = () => location.reload();
 enviar({ tipo: 'iniciar', seed: Date.now() >>> 0, sandbox });
+
+function avisarProgressao(ev: EventoProgressao): void {
+  switch (ev.tipo) {
+    case 'estrela':
+      if (ev.nivel >= 6) hud.aviso('A torre é LENDÁRIA! Fim da campanha; continue construindo à vontade.', 'conquista', 10000);
+      else {
+        const lib = ev.desbloqueios.length ? ` Liberado: ${ev.desbloqueios.join(', ')}.` : '';
+        hud.aviso(`A torre chegou a ${ev.nivel} estrelas!${lib}`, 'conquista', 8000);
+      }
+      break;
+    case 'inspecao_agendada':
+      hud.aviso('O inspetor visita a torre hoje às 10h. Mantenha os elevadores rápidos!', 'info', 6000);
+      break;
+    case 'inspecao':
+      hud.aviso(
+        ev.aprovada
+          ? `Inspeção aprovada (estresse do inspetor ${Math.round(ev.estresse)}).`
+          : `Inspeção reprovada (estresse ${Math.round(ev.estresse)}). Nova visita em um trimestre.`,
+        ev.aprovada ? 'ok' : 'erro',
+        6000,
+      );
+      break;
+    case 'inauguracao_agendada':
+      hud.aviso('Inauguração da Coroa hoje às 18h: 150 convidados vão subir até o topo.', 'info', 6000);
+      break;
+    case 'inauguracao':
+      hud.aviso(
+        ev.sucesso
+          ? `Inauguração um sucesso: ${ev.presentes} de ${ev.convidados} convidados chegaram.`
+          : `Inauguração fracassou: só ${ev.presentes} de ${ev.convidados} chegaram bem. Nova tentativa em um trimestre.`,
+        ev.sucesso ? 'ok' : 'erro',
+        6000,
+      );
+      break;
+  }
+}
 
 function mudarVelocidade(v: Velocidade): void {
   if (v !== 0) ultimaVelocidade = v;

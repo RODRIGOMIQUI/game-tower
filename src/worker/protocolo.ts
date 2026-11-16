@@ -1,6 +1,7 @@
 // Mensagens entre o thread principal (render/UI) e o Worker da simulação.
 import type { Comando, EventoJogo, Livro, ResultadoComando, ResumoPoco } from '../sim/jogo';
 import type { EstadoUnidade } from '../sim/inquilinos';
+import type { Progresso } from '../sim/progressao';
 import type { Estatisticas } from '../sim/pessoas';
 import type { SnapshotMundo } from '../sim/mundo';
 import type { Velocidade } from '../sim/relogio';
@@ -22,6 +23,7 @@ export interface EstadoResumo {
   /** Receitas e despesas do trimestre corrente. */
   livro: Livro;
   encerrado: boolean;
+  progresso: Progresso;
 }
 
 /** Detalhes da unidade inspecionada. */

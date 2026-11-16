@@ -45,6 +45,7 @@ function publicar(forcar = false): void {
         pessoas: jogo.populacao.estatisticas(),
         livro: jogo.livro,
         encerrado: jogo.encerrado,
+        progresso: jogo.progresso(),
       },
     });
     const pessoas = jogo.populacao.visiveis();

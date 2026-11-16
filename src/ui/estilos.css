@@ -160,6 +160,12 @@ html, body {
 }
 .aviso.erro { border-left-color: var(--erro); }
 .aviso.info { border-left-color: var(--destaque); }
+.aviso.conquista { border-left-color: var(--destaque); background: rgba(80, 64, 20, 0.95); font-weight: 500; }
+#hud .progresso { display: inline-flex; align-items: center; gap: 4px; cursor: help; font-size: 12px; }
+#hud .progresso[hidden] { display: none; }
+#hud .progresso b { color: var(--erro); font-family: var(--mono); }
+.barrinha { width: 60px; height: 6px; border-radius: 3px; background: var(--vidro-claro); overflow: hidden; display: inline-block; }
+.barrinha > span { display: block; height: 100%; background: var(--destaque); }
 .aviso.saindo { opacity: 0; transition: opacity 0.4s; }
 @keyframes entrar { from { transform: translateX(16px); opacity: 0; } }
 
