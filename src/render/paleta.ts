@@ -22,6 +22,7 @@ export const COR = {
   sujo: 0x8a6b4a,
   atencao: 0xffd27a,
   pragas: 0x6b7a3a,
+  janelaNoite: 0xffd27a,
   fogo: 0xff7a1a,
   fogoClaro: 0xffd23a,
   fumaca: 0x3a3a40,

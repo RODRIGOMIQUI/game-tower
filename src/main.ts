@@ -14,6 +14,7 @@ import { Menu } from './ui/menu';
 import { Relatorios } from './ui/relatorios';
 import { Tutorial } from './ui/tutorial';
 import type { Camada } from './render/cena';
+import { Som } from './audio/som';
 import type { DaSim, Dinamico, EstadoResumo, ParaSim } from './worker/protocolo';
 import type { EventoProgressao } from './sim/progressao';
 import type { EventoEspecial } from './sim/eventos';
@@ -54,13 +55,29 @@ const CAMADAS: [Camada, string][] = [
   ['trafego', 'Tráfego de pessoas'],
 ];
 
+const som = new Som();
+// Navegadores só liberam áudio depois de um gesto do usuário.
+for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => som.iniciar(), { capture: true });
+// Clique suave em qualquer botão da interface.
+document.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('button')) som.efeito('clique');
+});
+// Ambiente adaptativo: murmúrio, rua, vento e música de dia/noite.
+setInterval(() => som.ambiente(cena.pessoasVisiveis, cena.andarNoCentro, cena.escuridaoAtual > 0.5), 500);
+let ultimoFogo = 0;
+
 const hud = new Hud({
   velocidade: (v) => mudarVelocidade(v),
   ferramenta: (id) => escolherFerramenta(id),
   eventos: (ligado) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'eventos', ligado } }),
   menu: () => abrirMenuJogo(),
   desfazer: () => desfazer(),
+  alternarSom: () => {
+    som.mudar({ mudo: !som.config.mudo });
+    return som.config.mudo;
+  },
 });
+hud.marcarSom(som.config.mudo);
 
 const tutorial = new Tutorial();
 const relatorios = new Relatorios(() => relatorios.esconder());
@@ -82,6 +99,11 @@ const menu = new Menu({
     enviar({ tipo: 'relatorio' });
   },
   fechar: () => fecharMenu(),
+  audio: () => som.config,
+  mudarAudio: (c) => {
+    som.mudar(c);
+    hud.marcarSom(som.config.mudo);
+  },
 });
 
 function abrirMenuJogo(): void {
@@ -183,7 +205,12 @@ app.ticker.add(() => {
   const agora = performance.now();
   cena.desenharDinamica(agora, mundo);
   cena.desenharCamada();
-  cena.desenharFogos(agora, !!dinamico?.festival && data(estado?.tick ?? 0).hora >= 18);
+  const fogos = !!dinamico?.festival && data(estado?.tick ?? 0).hora >= 18;
+  cena.desenharFogos(agora, fogos);
+  if (fogos && agora - ultimoFogo > 700) {
+    ultimoFogo = agora;
+    som.efeito('fogos');
+  }
   if (seguindo && pessoaSelecionada) {
     const p = cena.posicaoPessoa(pessoaSelecionada, agora) ?? dinamico?.ficha?.posicao;
     if (p) cena.centralizarEm(p.x, p.y);
@@ -209,7 +236,7 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
       break;
     case 'dinamico':
       dinamico = msg;
-      cena.receberDinamica(msg, performance.now());
+      if (cena.receberDinamica(msg, performance.now()) > 0) som.efeito('ding');
       cena.desenharAlertas(mundo, msg.semAcesso);
       cena.atualizarSituacoes(msg.unidades, msg.versaoUnidades);
       cena.atualizarEsperas(msg.pocos);
@@ -217,8 +244,12 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
       break;
     case 'resultado': {
       const r = msg.resultado;
-      if (!r.ok) hud.aviso(r.motivo ?? 'Não foi possível', 'erro');
-      else {
+      if (!r.ok) {
+        hud.aviso(r.motivo ?? 'Não foi possível', 'erro');
+        som.efeito('erro');
+      } else {
+        if (r.acao === 'construir') som.efeito('construir');
+        else if (r.acao === 'demolir') som.efeito('demolir');
         if (r.acao === 'preco' || r.acao === 'eventos') break;
         const verbo =
           r.acao === 'construir' ? 'Construído' : r.acao === 'demolir' ? 'Demolido' : r.acao === 'desfazer' ? 'Desfeito' : 'Elevador atualizado';
@@ -240,9 +271,11 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
             ev.caixa < 0 ? 'erro' : 'info',
           );
           if (ev.caixa < 0) hud.aviso('Caixa negativo! Dois trimestres seguidos assim e a torre vai à falência.', 'erro');
+          som.efeito('caixa');
         } else if (ev.tipo === 'falencia') {
           document.getElementById('fim')!.hidden = false;
         } else if (ev.tipo === 'cenario') {
+          som.efeito('conquista');
           hud.aviso(`Cenário "${ev.nome}" concluído! Pode continuar jogando.`, 'conquista', 12000);
         } else if (ehProgressao(ev)) avisarProgressao(ev);
         else avisarEvento(ev);
@@ -301,6 +334,9 @@ function irAte(uid: number): (() => void) | undefined {
 }
 
 function avisarEvento(ev: EventoEspecial): void {
+  if (ev.tipo === 'incendio') som.efeito('alarme');
+  else if (ev.tipo === 'pane') som.efeito('pane');
+  else if (ev.tipo === 'achado' || ev.tipo === 'vip_chegou' || (ev.tipo === 'vip' && ev.boa)) som.efeito('conquista');
   switch (ev.tipo) {
     case 'incendio':
       hud.aviso(
@@ -350,6 +386,8 @@ function avisarEvento(ev: EventoEspecial): void {
 }
 
 function avisarProgressao(ev: EventoProgressao): void {
+  if (ev.tipo === 'estrela') som.efeito('estrela');
+  else if ((ev.tipo === 'inspecao' && ev.aprovada) || (ev.tipo === 'inauguracao' && ev.sucesso)) som.efeito('conquista');
   switch (ev.tipo) {
     case 'estrela':
       if (ev.nivel >= 6) hud.aviso('A torre é LENDÁRIA! Fim da campanha; continue construindo à vontade.', 'conquista', 10000);
@@ -558,6 +596,6 @@ window.addEventListener('keydown', (e) => {
 // Depuração em desenvolvimento: inspecionar pelo console do navegador.
 if (import.meta.env.DEV) {
   Object.assign(window, {
-    __gt: { app, cena, mundo: () => mundo, estado: () => estado, dinamico: () => dinamico, enviar },
+    __gt: { app, cena, som, mundo: () => mundo, estado: () => estado, dinamico: () => dinamico, enviar },
   });
 }

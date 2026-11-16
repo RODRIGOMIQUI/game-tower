@@ -107,13 +107,37 @@ livre/comprada.
 **UI:** cliques curtos, um som de "caixa registradora" ao fechar o trimestre e
 um jingle ao subir de estrela.
 
-## 8. Entregas de arte por fase
+## 8. Implementação (Fase 7)
 
-| Fase | Entrega |
-|---|---|
-| 1–4 | **arte provisória**: retângulos na cor da paleta + pessoas como pílulas coloridas |
-| 6 | ícones de UI, overlays |
-| 7 | sprites finais de unidades, pessoas (4 tipos × 3 humores × anim.), céu, efeitos, áudio |
+Toda a arte e o áudio são **gerados por código**, sem arquivos de imagem ou som:
+nada a licenciar, e o visual muda junto com o código.
 
-A arte provisória já usa os tokens da paleta, para que a troca pela arte
-final seja apenas de textura.
+**Arte** (`src/render/arte.ts`, `fundo.ts`, `cena.ts`, `dinamica.ts`):
+- Cada tipo de unidade tem um interior em pixel art (mesas e monitores,
+  camas, mesas com toalha e lustres, prateleiras, leitos com cortina, carros
+  estacionados, vagões de metrô, cúpula da Coroa…), com 3 variações por tipo e
+  versões vaga (sala vazia com placa), suja e com pragas. Cada combinação vira
+  uma textura gerada uma vez e reaproveitada.
+- Andares vazios mostram janelas da fachada; o lobby tem colunas, piso
+  quadriculado e portas de vidro nas entradas; o topo de cada trecho tem
+  platibanda. Poços têm cabos, batentes e luz de chamada (amarela no de serviço;
+  faixa dourada no expresso).
+- Pessoas: roupa, calça, tom de pele e cabelo variam por pessoa; pernas
+  alternam ao andar. Humor = balão acima da cabeça (rosa "!" irritado, vermelho
+  "!!" furioso). VIP: roupa dourada e coroa.
+- Carros de elevador: luz interna e as cabeças dos passageiros.
+- Fundo: sol e lua em arco, estrelas piscando, nuvens, duas camadas de cidade
+  com paralaxe e janelas que acendem à noite. Unidades ocupadas ganham luz
+  acesa à noite (desenhada acima da camada de escuridão).
+
+**Áudio** (`src/audio/`), todo WebAudio, liberado no primeiro clique/tecla:
+- Trilha generativa original de jazz suave/bossa: piano elétrico (FM), baixo,
+  chocalho e vibrafone esparso, em 4 progressões que trocam de tom; à noite
+  fica mais lenta, esparsa e escura.
+- Ambiente: murmúrio proporcional às pessoas visíveis, trânsito perto do chão,
+  vento nos andares altos.
+- Efeitos: clique de interface, construir, demolir, "ding" quando um carro
+  visível para (no máximo 1 a cada 300 ms), caixa registradora no fechamento,
+  jingle de estrela, alarme de incêndio, pane, fogos e erro.
+- Volume geral, música, efeitos e ambiente no menu (Áudio); botão de mudo na
+  barra superior. Preferências ficam guardadas no navegador.

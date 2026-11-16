@@ -4,6 +4,7 @@ import { CENARIOS } from '../sim/cenarios';
 import { formatarData, formatarHora } from '../sim/relogio';
 import type { SlotSalvo } from '../worker/armazenamento';
 import type { NovoJogo } from '../worker/protocolo';
+import type { ConfigAudio } from '../audio/som';
 import { dinheiro, inteiro } from './formato';
 
 export interface AcoesMenu {
@@ -14,6 +15,8 @@ export interface AcoesMenu {
   importar(dados: ArrayBuffer): void;
   relatorios(): void;
   fechar(): void;
+  audio(): ConfigAudio;
+  mudarAudio(c: Partial<ConfigAudio>): void;
 }
 
 const SLOTS_MANUAIS = ['1', '2', '3'];
@@ -39,7 +42,7 @@ export const ATALHOS_TEXTO: [string, string][] = [
 export class Menu {
   private readonly raiz = document.getElementById('menu')!;
   private saves: SlotSalvo[] = [];
-  private tela: 'inicio' | 'jogo' | 'cenarios' | 'carregar' | 'salvar' | 'atalhos' = 'inicio';
+  private tela: 'inicio' | 'jogo' | 'cenarios' | 'carregar' | 'salvar' | 'atalhos' | 'audio' = 'inicio';
   private emJogo = false;
 
   constructor(private readonly acoes: AcoesMenu) {}
@@ -85,6 +88,7 @@ export class Menu {
       carregar: () => this.listaSaves('carregar'),
       salvar: () => this.listaSaves('salvar'),
       atalhos: () => this.atalhos(),
+      audio: () => this.telaAudio(),
     }[this.tela]();
     this.raiz.replaceChildren(corpo);
   }
@@ -119,7 +123,39 @@ export class Menu {
       botao('Cenários', () => this.ir('cenarios')),
       botao('Carregar jogo salvo', () => this.ir('carregar')),
       this.botaoImportar(),
+      botao('Áudio', () => this.ir('audio')),
       botao('Atalhos de teclado', () => this.ir('atalhos')),
+    );
+    return c;
+  }
+
+  private telaAudio(): HTMLElement {
+    const [c, conteudo] = this.caixa('Áudio', () => this.ir(this.emJogo ? 'jogo' : 'inicio'));
+    const cfg = this.acoes.audio();
+    const deslizador = (rotulo: string, chave: 'mestre' | 'musica' | 'efeitos' | 'ambiente') => {
+      const l = el('label', 'deslizador');
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = '0';
+      input.max = '100';
+      input.value = String(Math.round(cfg[chave] * 100));
+      input.oninput = () => this.acoes.mudarAudio({ [chave]: Number(input.value) / 100 });
+      l.append(el('span', '', rotulo), input);
+      return l;
+    };
+    const mudo = el('label', 'deslizador');
+    const caixa = document.createElement('input');
+    caixa.type = 'checkbox';
+    caixa.checked = cfg.mudo;
+    caixa.onchange = () => this.acoes.mudarAudio({ mudo: caixa.checked });
+    mudo.append(el('span', '', 'Sem som'), caixa);
+    conteudo.append(
+      deslizador('Volume geral', 'mestre'),
+      deslizador('Música', 'musica'),
+      deslizador('Efeitos', 'efeitos'),
+      deslizador('Ambiente (murmúrio, rua, vento)', 'ambiente'),
+      mudo,
+      el('p', 'obs', 'Trilha e efeitos são gerados pelo próprio jogo, em tempo real.'),
     );
     return c;
   }
@@ -133,6 +169,7 @@ export class Menu {
       botao('Exportar para arquivo', () => this.acoes.exportar()),
       this.botaoImportar(),
       botao('Relatórios', () => this.acoes.relatorios()),
+      botao('Áudio', () => this.ir('audio')),
       botao('Atalhos de teclado', () => this.ir('atalhos')),
       botao('Novo jogo…', () => this.abrirInicio()),
     );

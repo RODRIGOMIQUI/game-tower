@@ -39,6 +39,7 @@ export interface AcoesHud {
   eventos(ligado: boolean): void;
   menu(): void;
   desfazer(): void;
+  alternarSom(): boolean;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe?: string, texto?: string): HTMLElementTagNameMap[K] {
@@ -65,6 +66,7 @@ export class Hud {
   private readonly eventosEl = el('button', 'botao eventos-sandbox');
   private readonly desfazerEl = el('button', 'botao acao-hud', '↶');
   private readonly menuEl = el('button', 'botao acao-hud', '☰');
+  private readonly somEl = el('button', 'botao acao-hud', '🔊');
   private readonly cenarioEl = el('span', 'cenario-chip');
   private eventosLigados = true;
   private readonly botoesVel = new Map<Velocidade, HTMLButtonElement>();
@@ -111,6 +113,10 @@ export class Hud {
     this.desfazerEl.title = 'Desfazer (Ctrl+Z)';
     this.desfazerEl.onclick = () => this.acoes.desfazer();
     this.cenarioEl.hidden = true;
+    this.somEl.title = 'Som ligado/desligado';
+    this.somEl.onclick = () => {
+      this.somEl.textContent = this.acoes.alternarSom() ? '🔇' : '🔊';
+    };
     raiz.append(
       this.menuEl,
       marca,
@@ -125,6 +131,7 @@ export class Hud {
       this.cenarioEl,
       el('div', 'espaco'),
       this.desfazerEl,
+      this.somEl,
       this.dataEl,
       this.horaEl,
       vel,
@@ -222,6 +229,10 @@ export class Hud {
       b.title = motivo === 'em breve' ? 'Chega na próxima fase' : motivo ? `Requer ${motivo}` : t.observacao;
       if (trava) trava.textContent = motivo;
     }
+  }
+
+  marcarSom(mudo: boolean): void {
+    this.somEl.textContent = mudo ? '🔇' : '🔊';
   }
 
   marcarFerramenta(id: string | null): void {

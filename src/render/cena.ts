@@ -1,6 +1,9 @@
-// Desenho do mundo com PixiJS. Arte provisória: retângulos nas cores da paleta
-// (docs/direcao-de-arte.md §8). Só redesenha estrutura/unidades quando o mundo muda.
-import { Application, Container, Graphics, Text } from 'pixi.js';
+// Desenho do mundo com PixiJS (docs/direcao-de-arte.md). Unidades são sprites
+// de pixel art gerados por arte.ts; estrutura, poços e escadas são desenhados
+// aqui. Só redesenha estrutura/unidades quando o mundo muda.
+import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { FabricaArte, type Variante } from './arte';
+import { Fundo } from './fundo';
 import type { Plano } from '../sim/construcao';
 import { ehElevador, ehEscada, tipo } from '../sim/dados';
 import { ANDAR_MAX, ANDAR_MIN, Est, LARGURA, nomeAndar, type Mundo, type Unidade } from '../sim/mundo';
@@ -29,6 +32,13 @@ export class Cena {
   private readonly terreno = new Graphics();
   private readonly estrutura = new Graphics();
   private readonly unidades = new Graphics();
+  private readonly sprites = new Container();
+  private readonly marcadores = new Graphics();
+  private readonly brilho = new Graphics();
+  private readonly arte: FabricaArte;
+  private readonly fundo: Fundo;
+  private minutoAtual = 360;
+  private escuro = 0;
   private readonly rotulos = new Container();
   private readonly noite = new Graphics();
   private readonly grade = new Graphics();
@@ -48,10 +58,16 @@ export class Cena {
   private chaveCeu = '';
 
   constructor(private readonly app: Application) {
-    this.mundoBase.addChild(this.terreno, this.foraDoLote, this.estrutura, this.unidades, this.camadaG, this.dinamicaC, this.alertas, this.rotulos);
+    this.arte = new FabricaArte(app.renderer);
+    this.mundoBase.addChild(
+      this.terreno, this.foraDoLote, this.estrutura, this.sprites, this.unidades, this.marcadores,
+      this.camadaG, this.dinamicaC, this.alertas, this.rotulos,
+    );
     this.dinamica = new CamadaDinamica(this.dinamicaC);
-    this.mundoTopo.addChild(this.grade, this.fantasma);
-    app.stage.addChild(this.ceu, this.fogos, this.mundoBase, this.noite, this.mundoTopo);
+    // O brilho fica acima da camada de noite: janelas acesas não escurecem.
+    this.mundoTopo.addChild(this.brilho, this.grade, this.fantasma);
+    this.fundo = new Fundo(app.renderer);
+    app.stage.addChild(this.ceu, this.fundo.raiz, this.fogos, this.mundoBase, this.noite, this.mundoTopo);
     this.desenharTerreno();
     this.grade.visible = false;
     this.enquadrarInicio();
@@ -136,6 +152,7 @@ export class Cena {
 
   atualizarCeu(minutoDoDia: number): void {
     const m = Math.floor(minutoDoDia);
+    this.minutoAtual = minutoDoDia;
     const chave = `${m}:${this.larguraTela}x${this.alturaTela}`;
     if (chave === this.chaveCeu) return;
     this.chaveCeu = chave;
@@ -149,6 +166,10 @@ export class Cena {
       g.rect(0, i * faixa, w, faixa + 1).fill(misturar(topo, horizonte, t));
     }
     const e = escuridao(m);
+    if (Math.abs(e - this.escuro) > 0.04 || (e === 0) !== (this.escuro === 0)) {
+      this.escuro = e;
+      this.redesenharBrilho();
+    }
     this.noite.clear();
     if (e > 0) this.noite.rect(0, 0, w, h).fill({ color: 0x0a0c20, alpha: e * 0.35 });
   }
@@ -168,12 +189,7 @@ export class Cena {
         }
         let fim = x + 1;
         while (fim < LARGURA && m.est(fim, y) === c) fim++;
-        const px = x * COL_PX;
-        const w = (fim - x) * COL_PX;
-        g.rect(px, topo, w, INTERIOR_PX).fill(COR_INTERIOR[c] ?? COR.interiorVazio);
-        g.rect(px, topo + INTERIOR_PX, w, LAJE_PX).fill(COR.estrutura);
-        g.rect(px, topo, 1, INTERIOR_PX).fill(COR.estruturaClaro);
-        g.rect(px + w - 1, topo, 1, INTERIOR_PX).fill(COR.estruturaClaro);
+        desenharTrecho(g, m, c, x, fim, y);
         x = fim;
       }
     }
@@ -265,8 +281,39 @@ export class Cena {
   private redesenharUnidades(): void {
     const m = this.mundoAtual;
     const gu = this.unidades.clear();
+    const gm = this.marcadores.clear();
+    for (const s of this.sprites.removeChildren()) s.destroy();
     if (!m) return;
-    for (const u of m.unidades.values()) desenharUnidade(gu, u, this.situacoes.get(u.uid));
+    for (const u of m.unidades.values()) {
+      if (ehElevador(u.tipo)) desenharPoco(gu, u);
+      else if (ehEscada(u.tipo)) desenharEscada(gu, u);
+      else {
+        const s = this.situacoes.get(u.uid);
+        const variante: Variante =
+          s?.situacao === 0 ? 'vaga' : s?.situacao === 3 ? 'suja' : s?.situacao === 4 ? 'pragas' : 'normal';
+        const r = retanguloUnidade(u);
+        const sp = new Sprite(this.arte.unidade(u.tipo, u.largura, u.altura, variante, u.uid));
+        sp.position.set(r.x, r.y);
+        this.sprites.addChild(sp);
+        desenharMarcador(gm, u, s);
+      }
+    }
+    this.redesenharBrilho();
+  }
+
+  /** Janelas acesas à noite nas unidades ocupadas (acima da camada de noite). */
+  private redesenharBrilho(): void {
+    const g = this.brilho.clear();
+    const m = this.mundoAtual;
+    if (!m || this.escuro < 0.05) return;
+    const a = this.escuro;
+    for (const u of m.unidades.values()) {
+      const s = this.situacoes.get(u.uid);
+      if (!s || s.situacao === 0 || s.situacao === 3 || s.situacao === 4) continue;
+      const r = retanguloUnidade(u);
+      g.rect(r.x + 1, r.y + 2, r.w - 2, r.h - 4).fill({ color: COR.janelaNoite, alpha: 0.22 * a });
+      g.rect(r.x + 1, r.y + 2, r.w - 2, 3).fill({ color: COR.janelaNoite, alpha: 0.35 * a }); // luz do teto
+    }
   }
 
   /** Contorno vermelho nas unidades sem rota a partir da rua. */
@@ -287,12 +334,40 @@ export class Cena {
     }
   }
 
-  receberDinamica(d: Dinamico, agora: number): void {
-    this.dinamica.receber(d, agora);
+  /** Recebe um quadro dinâmico; devolve quantos carros pararam dentro da tela (para o "ding"). */
+  receberDinamica(d: Dinamico, agora: number): number {
+    const paradas = this.dinamica.receber(d, agora);
+    let visiveis = 0;
+    for (const p of paradas) {
+      const u = this.mundoAtual?.unidades.get(p.x);
+      if (!u) continue;
+      const sx = this.camera.ox + (u.x + 2) * COL_PX * this.camera.escala;
+      const sy = this.camera.oy + topoDoAndar(p.y) * this.camera.escala;
+      if (sx >= 0 && sx <= this.larguraTela && sy >= 0 && sy <= this.alturaTela) visiveis++;
+    }
+    return visiveis;
+  }
+
+  get pessoasVisiveis(): number {
+    return this.dinamica.visiveis;
+  }
+
+  /** Andar no centro da tela (para o som ambiente). */
+  get andarNoCentro(): number {
+    return this.camera.celulaEm(this.larguraTela / 2, this.alturaTela / 2).y;
+  }
+
+  get escuridaoAtual(): number {
+    return this.escuro;
   }
 
   desenharDinamica(agora: number, m: Mundo): void {
+    // Céu e noite acompanham redimensionamentos mesmo com o jogo pausado (sai cedo se nada mudou).
+    this.atualizarCeu(this.minutoAtual);
     this.dinamica.desenhar(agora, m, this.camera.escala);
+    this.fundo.atualizar(
+      this.minutoAtual, agora, this.larguraTela, this.alturaTela, this.camera.oy, this.camera.ox, this.camera.escala,
+    );
   }
 
   /** Posição interpolada de uma pessoa visível, em (coluna, andar). */
@@ -396,32 +471,10 @@ function intensidade(g: Graphics, x: number, y: number, w: number, h: number, t:
   g.rect(x, y, w, h).fill({ color: misturar(0xffd27a, 0xe0393e, t), alpha: 0.15 + 0.65 * t });
 }
 
-function desenharUnidade(g: Graphics, u: Unidade, s: Situacao | undefined): void {
-  if (ehElevador(u.tipo)) return desenharPoco(g, u);
-  if (ehEscada(u.tipo)) return desenharEscada(g, u);
-  let cor = COR_CATEGORIA[tipo(u.tipo).categoria];
-  const vaga = s?.situacao === 0;
-  const suja = s?.situacao === 3;
-  const pragas = s?.situacao === 4;
-  if (vaga) cor = misturar(cor, COR.vago, 0.6);
-  else if (suja) cor = misturar(cor, COR.sujo, 0.55);
-  else if (pragas) cor = misturar(cor, COR.pragas, 0.65);
+/** Marcador de insatisfação sobre a unidade: amarelo (< 40), laranja (já recebeu aviso). */
+function desenharMarcador(g: Graphics, u: Unidade, s: Situacao | undefined): void {
   const r = retanguloUnidade(u);
-  g.rect(r.x, r.y, r.w, r.h).fill(cor);
-  g.rect(r.x + 1, r.y + 1, r.w - 2, 3).fill(escurecer(cor, 0.8)); // teto
-  g.rect(r.x + 2, r.y + r.h - 12, 3, 12).fill(escurecer(cor, 0.55)); // porta
-  g.rect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1).stroke({ width: 1, color: escurecer(cor, 0.6) });
-  if (pragas) {
-    // Bichinhos pelo chão
-    for (let i = 0; i < Math.floor(r.w / 6); i++) g.rect(r.x + 3 + i * 6, r.y + r.h - 3 - (i % 2) * 4, 2, 1).fill(0x1e2129);
-  }
-  if (vaga && r.w >= 24) {
-    // Placa "vago / à venda"
-    const px = r.x + r.w / 2 - 6;
-    g.rect(px, r.y + 10, 12, 7).fill(0xffffff);
-    g.rect(px + 2, r.y + 12, 8, 1).fill(COR.estrutura);
-    g.rect(px + 2, r.y + 14, 5, 1).fill(COR.estrutura);
-  }
+  const vaga = s?.situacao === 0;
   if (s && !vaga && (s.avisos > 0 || s.satisfacao < 40)) {
     // Marcador de insatisfação: amarelo (< 40), laranja (já recebeu aviso)
     const corM = s.avisos > 0 ? COR.alerta : COR.atencao;
@@ -441,11 +494,20 @@ function desenharPoco(g: Graphics, u: Unidade): void {
   g.rect(x, topo, 1, base - topo).fill(COR.estruturaClaro);
   g.rect(x + w - 1, topo, 1, base - topo).fill(COR.estruturaClaro);
   const expresso = u.tipo === 'elevador_expresso';
+  const servico = u.tipo === 'elevador_servico';
+  // Cabos
+  g.rect(x + w / 2 - 2, topo, 1, base - topo).fill({ color: 0x6a7080, alpha: 0.6 });
+  g.rect(x + w / 2 + 1, topo, 1, base - topo).fill({ color: 0x6a7080, alpha: 0.6 });
   for (let y = u.y; y < u.y + u.altura; y++) {
     const t = topoDoAndar(y);
     g.rect(x + 1, t + INTERIOR_PX, w - 2, LAJE_PX).fill(COR.estrutura);
-    if (!expresso || y <= 0) g.rect(x - 1, t + 8, 2, INTERIOR_PX - 8).fill(COR.portaPoco);
+    if (!expresso || y <= 0) {
+      // Batente da porta e luz de chamada
+      g.rect(x - 1, t + 8, 2, INTERIOR_PX - 8).fill(COR.portaPoco);
+      g.rect(x - 3, t + 14, 2, 2).fill(servico ? 0xe8c547 : 0x7fd0ff);
+    }
   }
+  if (expresso) g.rect(x, topo - 6, w, 2).fill(0xd8b04a); // faixa dourada do expresso
   // Casa de máquinas no topo
   g.rect(x, topo - 6, w, 6).fill(COR.estrutura);
 }
@@ -463,5 +525,67 @@ function desenharEscada(g: Graphics, u: Unidade): void {
     const dy = (altura / degraus) * (i + 1);
     g.rect(x + dx, base - dy, w / degraus + 0.5, 2).fill(cor);
     g.rect(x + dx, base - dy, 1, dy).fill(escurecer(cor, 0.7));
+  }
+}
+
+/**
+ * Trecho contínuo de estrutura num andar: andar vazio (parede com janelas),
+ * lobby (mármore, colunas e portas de vidro nas pontas) ou subsolo (concreto).
+ */
+function desenharTrecho(g: Graphics, m: Mundo, c: number, x0: number, x1: number, y: number): void {
+  const topo = topoDoAndar(y);
+  const px = x0 * COL_PX;
+  const w = (x1 - x0) * COL_PX;
+  const r = (x: number, yy: number, ww: number, hh: number, cor: number, alpha = 1) =>
+    g.rect(x, yy, ww, hh).fill({ color: cor, alpha });
+  if (c === Est.Lobby) {
+    r(px, topo, w, INTERIOR_PX, COR.lobby);
+    r(px, topo, w, 3, escurecer(COR.lobby, 0.85));
+    for (let i = 0; i < x1 - x0; i++) r(px + i * COL_PX, topo + INTERIOR_PX - 3, COL_PX, 3, i % 2 ? 0xe8dcc0 : 0xd4c4a0);
+    for (let xc = x0 + 6; xc < x1 - 2; xc += 12) {
+      r(xc * COL_PX, topo + 3, 4, INTERIOR_PX - 6, 0xf0e6d0);
+      r(xc * COL_PX + 3, topo + 3, 1, INTERIOR_PX - 6, escurecer(COR.lobby, 0.8));
+    }
+    if (y === 0) {
+      // Portas de vidro nas pontas (entradas)
+      for (const xp of [px + 1, px + w - 11]) {
+        r(xp, topo + 8, 10, INTERIOR_PX - 8, COR.estruturaClaro);
+        r(xp + 1, topo + 9, 8, INTERIOR_PX - 9, 0xa9d8f0, 0.85);
+        r(xp + 5, topo + 9, 1, INTERIOR_PX - 9, COR.estruturaClaro);
+      }
+    }
+  } else if (c === Est.Escavado) {
+    r(px, topo, w, INTERIOR_PX, COR.escavado);
+    r(px, topo + 4, w, 2, escurecer(COR.escavado, 0.75)); // cano
+    for (let xc = x0; xc < x1; xc += 10) r(xc * COL_PX, topo, 2, INTERIOR_PX, escurecer(COR.escavado, 0.85));
+  } else {
+    r(px, topo, w, INTERIOR_PX, COR.interiorVazio);
+    r(px, topo, w, 2, escurecer(COR.interiorVazio, 0.85));
+    // Janelas da fachada nos andares ainda vazios
+    for (let xc = x0 + 1; xc + 2 < x1; xc += 4) {
+      r(xc * COL_PX + 2, topo + 7, 20, 14, COR.estruturaClaro);
+      r(xc * COL_PX + 3, topo + 8, 18, 12, 0xa9c8dc);
+      r(xc * COL_PX + 3, topo + 8, 6, 12, 0xc8e0ee);
+    }
+  }
+  // Laje e pilares das pontas (fachada)
+  r(px, topo + INTERIOR_PX, w, LAJE_PX, COR.estrutura);
+  r(px, topo + INTERIOR_PX, w, 1, COR.estruturaClaro);
+  r(px, topo, 2, INTERIOR_PX, COR.estrutura);
+  r(px + w - 2, topo, 2, INTERIOR_PX, COR.estrutura);
+  // Cobertura: onde não há andar acima, uma platibanda
+  if (y >= 0) {
+    let xc = x0;
+    while (xc < x1) {
+      if (m.est(xc, y + 1) !== Est.Vazio) {
+        xc++;
+        continue;
+      }
+      let f = xc;
+      while (f < x1 && m.est(f, y + 1) === Est.Vazio) f++;
+      r(xc * COL_PX, topo - 4, (f - xc) * COL_PX, 4, COR.estrutura);
+      r(xc * COL_PX, topo - 4, (f - xc) * COL_PX, 1, COR.estruturaClaro);
+      xc = f;
+    }
   }
 }

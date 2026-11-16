@@ -8,7 +8,17 @@ import { ANDAR_PX, COL_PX, LAJE_PX, topoDoAndar } from './camera';
 import { COR } from './paleta';
 
 const INTERIOR_PX = ANDAR_PX - LAJE_PX;
-const COR_HUMOR = [COR.humorOk, COR.humorIrritado, COR.humorFurioso, COR.vip];
+// Variedade das pessoas (roupas, calças, tons de pele, cabelos).
+const ROUPAS = [0x4a78b8, 0xc8483f, 0x5d9a4f, 0xe8c547, 0x8e6bb8, 0xe38a4b, 0x2b2f3a, 0xf4f4f0, 0x3a8a8a, 0xe89ab0];
+const CALCAS = [0x2b2f3a, 0x3b4a6a, 0x5e4630, 0x6e7178];
+const PELES = [0xf1c9a5, 0xe0b48a, 0xc68e62, 0x9a6440, 0x6e4529];
+const CABELOS = [0x2b2018, 0x5e3a1e, 0xb08a4a, 0x1a1a1a, 0x8a8a8a, 0xa0522d];
+
+function mistura(n: number): number {
+  let h = Math.imul(n ^ 0x5bd1e995, 0x27d4eb2d);
+  h ^= h >>> 15;
+  return h >>> 0;
+}
 const PASSO_CARRO = 5;
 
 interface Quadro {
@@ -26,21 +36,41 @@ export class CamadaDinamica {
   private atual: Quadro | null = null;
   private indiceAnterior = new Map<number, number>();
   private indiceCarrosAnterior = new Map<number, number>();
+  /** Último andar e se estava andando, por carro (para o "ding" ao parar). */
+  private movimento = new Map<number, { pos: number; andando: boolean }>();
 
   constructor(pai: Container) {
     pai.addChild(this.carros, this.pessoas, this.fogo);
   }
 
-  receber(d: Dinamico, agora: number): void {
+  /**
+   * Recebe um quadro da simulação. Devolve onde carros acabaram de parar
+   * (coluna, andar), para o som do elevador.
+   */
+  receber(d: Dinamico, agora: number): { x: number; y: number }[] {
+    const paradas: { x: number; y: number }[] = [];
+    for (const [k, i] of chavesCarros(d.carros)) {
+      const pos = d.carros[i + 1]!;
+      const ant = this.movimento.get(k);
+      const andando = !!ant && ant.pos !== pos;
+      if (ant?.andando && !andando && d.carros[i + 2]! > 0) paradas.push({ x: d.carros[i]!, y: pos });
+      this.movimento.set(k, { pos, andando });
+    }
     this.anterior = this.atual;
     this.atual = { t: agora, pessoas: d.pessoas, carros: d.carros };
     this.focos = d.focos;
     this.indiceAnterior.clear();
     this.indiceCarrosAnterior.clear();
     const a = this.anterior;
-    if (!a) return;
+    if (!a) return paradas;
     for (let i = 0; i < a.pessoas.length; i += 4) this.indiceAnterior.set(a.pessoas[i]!, i);
     for (const [k, i] of chavesCarros(a.carros)) this.indiceCarrosAnterior.set(k, i);
+    return paradas;
+  }
+
+  /** Quantas pessoas estão visíveis no último quadro. */
+  get visiveis(): number {
+    return (this.atual?.pessoas.length ?? 0) / 4;
   }
 
   private desenharFogo(agora: number, mundo: Mundo): void {
@@ -122,11 +152,17 @@ export class CamadaDinamica {
       const w = (poco.largura - 1) * COL_PX;
       const y = topoDoAndar(pos) + 2;
       const h = INTERIOR_PX - 2;
-      gc.rect(x, y, w, h).fill(COR.carro);
-      if (carga > 0) {
-        const hc = Math.max(2, (h - 4) * (carga / cap));
-        gc.rect(x + 2, y + h - 2 - hc, w - 4, hc).fill(COR.carroCarga);
+      // Cabine: luz interna, cabeças dos passageiros e portas.
+      gc.rect(x, y, w, h).fill(0xfff6dc);
+      const n = Math.min(Math.round(carga), 12);
+      for (let k = 0; k < n; k++) {
+        const hx = x + 3 + (k % 6) * ((w - 6) / 6);
+        const hy = y + h - 12 - Math.floor(k / 6) * 3;
+        gc.rect(hx, hy + 3, 3, 9).fill(ROUPAS[k % ROUPAS.length]!);
+        gc.rect(hx, hy, 3, 3).fill(PELES[k % PELES.length]!);
       }
+      if (carga >= cap) gc.rect(x, y, w, 2).fill(COR.carroCarga); // lotado
+      gc.rect(x + w / 2 - 0.5, y + 4, 1, h - 4).fill({ color: 0x9aa3b0, alpha: 0.7 });
       // Pane: contorno vermelho piscando
       const pisca = emPane && Math.floor(agora / 300) % 2 === 0;
       gc.rect(x + 0.5, y + 0.5, w - 1, h - 1).stroke({ width: emPane ? 2 : 1, color: pisca ? COR.pane : COR.estrutura });
@@ -134,24 +170,51 @@ export class CamadaDinamica {
 
     this.desenharFogo(agora, mundo);
 
-    // Pessoas: corpo 5×12 px com cabeça; cor indica o humor (dourado = VIP).
+    // Pessoas: roupa, pele e cabelo variam por pessoa; pernas alternam ao
+    // andar. O humor aparece como balão acima da cabeça (forma + cor).
     const detalhada = escala >= 1;
     const ps = q.pessoas;
     for (let i = 0; i < ps.length; i += 4) {
+      const id = ps[i]!;
       let x = ps[i + 1]!;
       let y = ps[i + 2]!;
-      const j = this.indiceAnterior.get(ps[i]!);
+      const j = this.indiceAnterior.get(id);
+      let andando = false;
       if (a && j !== undefined) {
+        andando = a.pessoas[j + 1] !== x;
         x = lerp(a.pessoas[j + 1]!, x);
         y = lerp(a.pessoas[j + 2]!, y);
       }
-      const cor = COR_HUMOR[ps[i + 3]!] ?? COR.humorOk;
-      const px = x * COL_PX;
-      const base = topoDoAndar(y) + INTERIOR_PX;
-      if (detalhada) {
-        gp.rect(px - 2.5, base - 9, 5, 9).fill(cor);
-        gp.rect(px - 1.5, base - 12, 3, 3).fill(cor);
-      } else gp.rect(px - 2, base - 10, 4, 10).fill(cor);
+      const humor = ps[i + 3]!;
+      const vip = humor === 3;
+      const h = mistura(id);
+      const roupa = vip ? COR.vip : ROUPAS[h % ROUPAS.length]!;
+      const calca = CALCAS[(h >> 3) % CALCAS.length]!;
+      const pele = PELES[(h >> 6) % PELES.length]!;
+      const cabelo = CABELOS[(h >> 9) % CABELOS.length]!;
+      const px = Math.round(x * COL_PX - 2.5);
+      const base = Math.round(topoDoAndar(y) + INTERIOR_PX);
+      if (!detalhada) {
+        gp.rect(px, base - 10, 4, 10).fill(roupa);
+        continue;
+      }
+      const passo = andando ? Math.floor(x * 3) % 2 : 0;
+      gp.rect(px + (passo ? 0 : 1), base - 4, 1, 4).fill(calca); // pernas
+      gp.rect(px + (passo ? 3 : 3), base - 4, 1, 4).fill(calca);
+      gp.rect(px + 1, base - 5, 3, 1).fill(calca);
+      gp.rect(px, base - 10, 5, 5).fill(roupa); // tronco
+      gp.rect(px + 1, base - 13, 3, 3).fill(pele); // cabeça
+      gp.rect(px + 1, base - 14, 3, 1).fill(cabelo);
+      if (vip) gp.rect(px + 1, base - 16, 3, 2).fill(COR.vip); // coroa
+      if (humor === 1 || humor === 2) {
+        // Balão: irritado (rosa, "!") ou furioso (vermelho, "!!")
+        const cor = humor === 2 ? COR.humorFurioso : COR.humorIrritado;
+        const bw = humor === 2 ? 7 : 5;
+        gp.rect(px - (bw - 5) / 2, base - 22, bw, 6).fill(cor);
+        gp.rect(px + 2, base - 16, 1, 1).fill(cor);
+        gp.rect(px + 2 - (humor === 2 ? 1 : 0), base - 21, 1, 3).fill(0xffffff);
+        if (humor === 2) gp.rect(px + 3, base - 21, 1, 3).fill(0xffffff);
+      }
     }
   }
 }

@@ -20,7 +20,7 @@ botão direito/meio ou esquerdo sem ferramenta move a câmera · roda/`+`/`-` = 
 setas movem a câmera · `Espaço` pausa · `1`–`4` = 1×/2×/4×/8× ·
 `P` piso · `L` lobby · `E` escavação · `O` escritório · `A` apartamento · `V` elevador ·
 `T` escada · `X` demolir · `Esc` cancela · `Ctrl+Z` desfaz · `C` camadas · `R` relatórios ·
-`M` menu (salvar/carregar/exportar) · `?` atalhos.
+`M` menu (salvar/carregar/exportar/áudio) · `?` atalhos · 🔊 na barra liga/desliga o som.
 
 Elevador: escolha a ferramenta e **arraste na vertical** para definir os andares.
 Clique (sem ferramenta) num poço ou unidade para abrir o inspetor: lá se
@@ -71,6 +71,6 @@ src/
 | 4 | Progressão e infraestrutura (MVP) | ✅ |
 | 5 | Eventos | ✅ |
 | 6 | UX moderna: overlays, relatórios, save | ✅ |
-| 7 | Arte e áudio finais | — |
+| 7 | Arte e áudio finais | ✅ |
 | 8 | Performance e escala | — |
 | 9 | Balanceamento, beta, lançamento | — |
