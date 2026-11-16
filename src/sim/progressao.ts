@@ -25,7 +25,9 @@ export const ESTRESSE_MAX_INAUGURACAO = 50;
 /** Dias até nova tentativa após reprovação (um trimestre). */
 export const DIAS_NOVA_TENTATIVA = 4;
 /** Hora em que o inspetor chega e em que a inauguração começa. */
-const HORA_INSPECAO = 10;
+/** Inspetor chega às 08h30, no pico da manhã: é quando os elevadores são testados. */
+const HORA_INSPECAO = 8;
+const MINUTO_INSPECAO = 30;
 const HORA_INAUGURACAO = 18;
 const HORA_AVALIA_INAUGURACAO = 23;
 
@@ -61,7 +63,7 @@ interface Nivel {
 /** Requisitos para chegar a cada nível (índice = nível). */
 const NIVEIS: Record<number, Nivel> = {
   2: { populacao: 250, unidades: [] },
-  3: { populacao: 1200, unidades: [['seguranca', 'Segurança']] },
+  3: { populacao: 1000, unidades: [['seguranca', 'Segurança']] }, // era 1.200 (Fase 9: meio do jogo lento)
   4: {
     populacao: 4000,
     unidades: [['centro_medico', 'Centro médico'], ['hotel_suite', 'Suíte de hotel']],
@@ -179,7 +181,7 @@ export class Progressao {
     if (etapa === 'inspecao' && d.hora === HORA_INSPECAO && !this.emEtapa) {
       const roteiro = this.roteiro(ctx);
       if (!roteiro.length) return this.reprovar(tick, 100);
-      this.inspetor = ctx.populacao.inspecionar(roteiro, d.minutoDoDia, tick).id;
+      this.inspetor = ctx.populacao.inspecionar(roteiro, d.minutoDoDia + MINUTO_INSPECAO, tick).id;
       this.emEtapa = true;
     }
     if (etapa === 'inauguracao') {

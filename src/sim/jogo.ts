@@ -28,7 +28,8 @@ import { Rng } from './rng';
 import { Roteador } from './rotas';
 import { Transito, type ModoElevador } from './transito';
 
-export const DINHEIRO_INICIAL = 2_000_000;
+/** Caixa inicial da carreira (Fase 9: era $2 milhões; o começo ficava lento demais). */
+export const DINHEIRO_INICIAL = 3_000_000;
 /** Caixa do modo sandbox (docs/gdd.md §12). */
 export const DINHEIRO_SANDBOX = 1_000_000_000;
 /** Ticks entre recálculos das rotas em cache. */
@@ -277,7 +278,7 @@ export class Jogo {
     const plano =
       cmd.tipo === 'construir'
         ? planejarConstrucao(this.mundo, cmd.item, cmd.x0, cmd.y0, cmd.x1, cmd.y1, this.contexto())
-        : planejarDemolicao(this.mundo, cmd.x0, cmd.y0, cmd.x1, cmd.y1);
+        : planejarDemolicao(this.mundo, cmd.x0, cmd.y0, cmd.x1, cmd.y1, this.inquilinos.comInquilino());
     if (plano.validos > 0) {
       const uidAntes = this.mundo.proximoUid;
       executarPlano(this.mundo, plano);
@@ -317,6 +318,10 @@ export class Jogo {
     const custo = -a.custo;
     if (custo > this.dinheiro) return r(false, 0, 'Dinheiro insuficiente para desfazer');
     let motivo: string | undefined;
+    const ocupadas = this.inquilinos.comInquilino();
+    if (a.acao === 'construir' && a.uids.some((u) => ocupadas.has(u))) {
+      return r(false, 0, 'Já tem inquilino ou foi vendida: use Demolir');
+    }
     if (a.acao === 'construir') motivo = desfazerConstrucao(this.mundo, a.itens, a.uids);
     else {
       const res = desfazerDemolicao(this.mundo, a.itens);

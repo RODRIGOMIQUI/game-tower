@@ -1,4 +1,4 @@
-// Critério da Fase 3: com $2.000.000, um layout sensato prospera e um layout
+// Critério da Fase 3: com o mesmo caixa ($2.000.000), um layout sensato prospera e um layout
 // ruim vai à falência. Rode `npm run sim` para ver as tabelas.
 import { expect, it } from 'vitest';
 import { Jogo, type EventoJogo } from './jogo';
@@ -26,7 +26,7 @@ function simular(j: Jogo, trimestres: number) {
 
 it('layout sensato prospera em 2 anos', () => {
   // Começo "típico" de docs/economia.md §4
-  const j = new Jogo({ seed: 11 });
+  const j = new Jogo({ seed: 11, dinheiro: 2_000_000 });
   construir(j, 'lobby', 0, 0, 59, 0);
   construir(j, 'piso', 0, 1, 59, 5);
   construir(j, 'elevador_padrao', 28, 0, 28, 5);
@@ -47,7 +47,7 @@ it('layout sensato prospera em 2 anos', () => {
 });
 
 it('layout ruim (escritórios sem acesso, elevadores caros) vai à falência', () => {
-  const j = new Jogo({ seed: 11 });
+  const j = new Jogo({ seed: 11, dinheiro: 2_000_000 });
   construir(j, 'lobby', 0, 0, 59, 0);
   construir(j, 'piso', 0, 1, 59, 5);
   // Elevadores que não levam a lugar nenhum útil, cheios de carros

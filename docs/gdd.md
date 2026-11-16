@@ -232,7 +232,7 @@ imediatamente acima/abaixo. Overlay de ruído mostra isso em calor.
 |---|---|---|---|
 | ★1 | — | — | piso, lobby, escada, elevador padrão, escritório, apartamento, lanchonete |
 | ★2 | 250 | — | hotel simples, limpeza, elevador de serviço, segurança |
-| ★3 | 1.200 | segurança construída | duplo, suíte, restaurante, loja, cinema, escada rolante, expresso, sky lobby, estacionamento, reciclagem, centro médico |
+| ★3 | 1.000 | segurança construída | duplo, suíte, restaurante, loja, cinema, escada rolante, expresso, sky lobby, estacionamento, reciclagem, centro médico |
 | ★4 | 4.000 | centro médico · suíte · satisfação média ≥ 55 | salão de eventos, metrô, despacho por destino |
 | ★5 | 8.000 | metrô · **inspeção aprovada** | Coroa da Torre |
 | **Lendária** | 12.000 | Coroa no topo (andares 98–100) + evento de inauguração bem-sucedido | fim da campanha; segue em modo livre |
@@ -241,8 +241,8 @@ imediatamente acima/abaixo. Overlay de ruído mostra isso em calor.
 
 - A checagem é feita à meia-noite. O progresso aparece na barra superior
   (passe o mouse para ver cada requisito).
-- **Inspeção (5★):** cumpridos os demais requisitos, o inspetor chega às 10h
-  do dia seguinte e visita 5 unidades ocupadas sorteadas, 20 min em cada. Se o
+- **Inspeção (5★):** cumpridos os demais requisitos, o inspetor chega às 08h30
+  (pico da manhã) do dia seguinte e visita 5 unidades ocupadas sorteadas, 20 min em cada. Se o
   maior estresse dele ficar abaixo de 50 e ele completar o roteiro, aprova.
   Reprovado: nova visita em 1 trimestre.
 - **Inauguração (Lendária):** com a Coroa construída, 150 convidados chegam às
@@ -265,7 +265,7 @@ imediatamente acima/abaixo. Overlay de ruído mostra isso em calor.
 
 ## 9. Economia (resumo)
 
-- Dinheiro inicial: **$ 2.000.000**. Sem empréstimos na campanha.
+- Dinheiro inicial: **$ 3.000.000** (era $2 milhões; subiu na Fase 9 porque o começo ficava lento). Sem empréstimos na campanha.
 - **Receitas:** aluguel trimestral (escritório, loja), venda de apartamento,
   diárias de hotel, receita por cliente (comida, cinema, eventos),
   estacionamento.

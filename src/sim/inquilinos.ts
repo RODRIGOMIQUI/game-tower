@@ -101,6 +101,11 @@ export const ESTRESSE_MAX_VIP = 30;
 
 /** Satisfação abaixo da qual o inquilino recebe um aviso no trimestre. */
 export const SATISFACAO_CRITICA = 25;
+/**
+ * Abaixo deste nível de satisfação o inquilino recebe aviso no fechamento.
+ * Preço alto exige atendimento melhor: premium não é mais escolha automática.
+ */
+export const SATISFACAO_MINIMA: Record<NivelPreco, number> = { baixo: 15, normal: 25, alto: 40, premium: 55 };
 /** Ruído: alcance horizontal no mesmo andar (colunas). */
 const ALCANCE_RUIDO = 10;
 const RUIDO_MAX = 40;
@@ -115,7 +120,7 @@ const PROCURA_POR_HORA: Record<string, number> = { escritorio: 0.06, loja: 0.05,
 const PROCURA_HOTEL = 0.8;
 /** Visitantes por hora: [hora início, hora fim (exclusiva), visitantes/h]. */
 const VISITAS: Record<string, [number, number, number][]> = {
-  lanchonete: [[11, 14, 15]],
+  lanchonete: [[11, 14, 25]],
   restaurante: [[11, 14, 10], [18, 21, 15]],
   loja: [[10, 20, 8]],
   coroa: [[10, 22, 12]],
@@ -464,7 +469,7 @@ export class Inquilinos {
         this.caixa.creditar('aluguel', Math.round(t.receita_valor * NIVEIS_PRECO[e.preco].mult));
       }
       if (t.receita_tipo !== 'aluguel_tri' && t.receita_tipo !== 'venda') continue;
-      e.avisos = e.satisfacao < SATISFACAO_CRITICA ? e.avisos + 1 : 0;
+      e.avisos = e.satisfacao < SATISFACAO_MINIMA[e.preco] ? e.avisos + 1 : 0;
       if (e.avisos >= 2) {
         populacao.desocupar(e.uid);
         e.situacao = 'vaga';
@@ -475,6 +480,20 @@ export class Inquilinos {
     }
     this.versao++;
     return saidas;
+  }
+
+  /**
+   * Unidades que já renderam dinheiro de inquilino/comprador: ocupadas,
+   * hospedadas, sujas ou revendidas. Demolir/desfazer não devolve o custo delas.
+   */
+  comInquilino(): Set<number> {
+    const r = new Set<number>();
+    for (const e of this.estados.values()) {
+      const t = tipo(e.tipo);
+      if (t.receita_tipo === 'por_cliente') continue; // administradas pela torre
+      if (e.situacao !== 'vaga' || e.desvalorizado) r.add(e.uid);
+    }
+    return r;
   }
 
   /** Ocupa tudo o que estiver vago (testes e cenários). */

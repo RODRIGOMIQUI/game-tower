@@ -18,6 +18,7 @@ import { Relatorios } from './ui/relatorios';
 import { Tutorial } from './ui/tutorial';
 import type { Camada } from './render/cena';
 import { Som } from './audio/som';
+import { guardarRecursosOffline } from './offline';
 import type { DaSim, Dinamico, EstadoResumo, ParaSim } from './worker/protocolo';
 import type { EventoProgressao } from './sim/progressao';
 import type { EventoEspecial } from './sim/eventos';
@@ -410,7 +411,7 @@ function avisarProgressao(ev: EventoProgressao): void {
       }
       break;
     case 'inspecao_agendada':
-      hud.aviso('O inspetor visita a torre hoje às 10h. Mantenha os elevadores rápidos!', 'info', 6000);
+      hud.aviso('O inspetor visita a torre hoje às 08h30, em pleno pico da manhã. Elevadores rápidos!', 'info', 6000);
       break;
     case 'inspecao':
       hud.aviso(
@@ -428,7 +429,9 @@ function avisarProgressao(ev: EventoProgressao): void {
       hud.aviso(
         ev.sucesso
           ? `Inauguração um sucesso: ${ev.presentes} de ${ev.convidados} convidados chegaram.`
-          : `Inauguração fracassou: só ${ev.presentes} de ${ev.convidados} chegaram bem. Nova tentativa em um trimestre.`,
+          : ev.presentes === 0
+            ? 'Inauguração fracassou: nenhum convidado conseguiu chegar à Coroa. Ela tem contorno vermelho (sem acesso)? Leve um expresso até um sky lobby no andar dela. Nova tentativa em um trimestre.'
+            : `Inauguração fracassou: só ${ev.presentes} de ${ev.convidados} chegaram bem. Nova tentativa em um trimestre.`,
         ev.sucesso ? 'ok' : 'erro',
         6000,
       );
@@ -456,8 +459,22 @@ function planoAtual(): Plano | null {
   const a = arrasto?.inicio ?? hover;
   const b = arrasto?.fim ?? hover;
   if (!a || !b) return null;
-  if (ferramenta === DEMOLIR) return planejarDemolicao(mundo, a.x, a.y, b.x, b.y);
+  if (ferramenta === DEMOLIR) return planejarDemolicao(mundo, a.x, a.y, b.x, b.y, comInquilino());
   return planejarConstrucao(mundo, ferramenta, a.x, a.y, b.x, b.y, estado.contexto);
+}
+
+/** Unidades com inquilino (segundo o último resumo da simulação): demolir não reembolsa. */
+function comInquilino(): Set<number> {
+  const r = new Set<number>();
+  const res = dinamico?.unidades;
+  if (!res) return r;
+  for (let i = 0; i < res.length; i += 6) {
+    const uid = res[i]!;
+    const u = mundo.unidades.get(uid);
+    if (!u || tipo(u.tipo).receita_tipo === 'por_cliente') continue;
+    if (res[i + 1] !== 0) r.add(uid);
+  }
+  return r;
 }
 
 function atualizarFantasma(): void {
@@ -611,6 +628,15 @@ window.addEventListener('keydown', (e) => {
     cena.aplicarCamera();
   } else if (ATALHOS[k]) escolherFerramenta(ferramenta === ATALHOS[k] ? null : ATALHOS[k]!);
 });
+
+// Versão publicada: registra o service worker (jogo instalável e offline).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {
+    // sem service worker o jogo funciona normalmente, só não fica offline
+  });
+  // Depois que tudo (inclusive o renderizador, carregado sob demanda) chegou.
+  setTimeout(guardarRecursosOffline, 4000);
+}
 
 // Depuração em desenvolvimento: inspecionar pelo console do navegador.
 if (import.meta.env.DEV) {

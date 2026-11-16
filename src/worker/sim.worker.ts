@@ -3,6 +3,7 @@
 import { Jogo, type Save } from '../sim/jogo';
 import { data } from '../sim/relogio';
 import { comprimir, descomprimir, gravar, ler, listar } from './armazenamento';
+import { guardarRecursosOffline } from '../offline';
 import { TICKS_POR_SEGUNDO_1X, type Velocidade } from '../sim/relogio';
 import type { DaSim, ParaSim } from './protocolo';
 
@@ -13,6 +14,9 @@ const escopo = self as unknown as {
 };
 
 let jogo: Jogo | null = null;
+
+// Versão publicada: guarda os arquivos do Worker para jogar offline.
+if (import.meta.env.PROD) setTimeout(guardarRecursosOffline, 4000);
 let velocidade: Velocidade = 1;
 let acumulado = 0;
 let ultimo = performance.now();

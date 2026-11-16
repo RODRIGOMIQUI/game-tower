@@ -7,7 +7,7 @@
 ## 1. Regras gerais
 
 - Moeda: `$`, valores inteiros.
-- Caixa inicial (carreira): **$ 2.000.000**.
+- Caixa inicial (carreira): **$ 3.000.000** (era $2 milhões até a Fase 9).
 - Trimestre = 4 dias de jogo (3 úteis + 1 fim de semana).
 - **Fechamento do trimestre** (00:00 do 1º dia): cobra manutenção, credita
   aluguéis, gera relatório e autosave.
@@ -128,6 +128,29 @@ Com dinheiro ilimitado tudo acontece em ~9 dias; na carreira real o caixa é o
 freio. Pontos para a Fase 9: a inspeção às 10h é fácil demais (o prédio está
 calmo) e a simulação com ~12 mil pessoas roda perto de 45 minutos de jogo por
 segundo, no limite da velocidade 8× (alvo da Fase 8).
+
+## 4.3 Carreira com dinheiro real (Fase 9)
+
+`LONGO=1 npm run sim:bot`: um jogador automático começa com o caixa da
+carreira, só constrói quando sobra dinheiro além de uma reserva de $250 mil,
+põe carros onde a espera passa de 15 min e constrói os requisitos de cada
+estrela assim que liberados.
+
+| Nível | Meta (§4) | Com $2 milhões | **Com $3 milhões (atual)** |
+|---|---|---|---|
+| 2★ | ~3 trimestres | ano 2 (dia 22) | **dia 9** |
+| 3★ | ~ano 2 | ano 5 | **ano 3 (dia 45)** |
+| 4★ | ~ano 4 | ano 6 | **ano 6 (dia 85)** |
+| 5★ | ~ano 6 | ano 7 | **ano 7 (dia 106)**, 1 inspeção reprovada antes |
+| Lendária | ~ano 8 | — | **ano 8 (dia 118)** |
+
+Ajustes feitos com base nesses números: caixa inicial de $2 para $3 milhões;
+meta da 3★ de 1.200 para 1.000 pessoas; inspetor às 08h30 com paciência de
+10 min (antes passava sempre com estresse 0); mais visitantes na lanchonete.
+O meio do jogo (3★–4★) ainda é o trecho mais lento; é o principal ponto a
+observar no beta (`docs/beta.md`). No fim, o caixa passa de dezenas de milhões
+sem ter onde gastar: novas unidades/objetivos de fim de jogo ficam para depois
+da 1.0.
 
 ## 5. Balanceamento: como vamos ajustar
 

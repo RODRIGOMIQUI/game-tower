@@ -1,7 +1,7 @@
 {
   "name": "gametower",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0-beta.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,8 @@
     "sim": "vitest run src/sim/cenario.test.ts src/sim/carreira.test.ts --silent=false",
     "sim:partida": "vitest run src/sim/partida.test.ts --silent=false",
     "bench": "vitest run src/sim/bench.test.ts --silent=false",
-    "bench:perfil": "vite build --config tools/bench/vite.config.ts && node --cpu-prof --cpu-prof-dir=tools/bench/dist tools/bench/dist/bench.mjs"
+    "bench:perfil": "vite build --config tools/bench/vite.config.ts && node --cpu-prof --cpu-prof-dir=tools/bench/dist tools/bench/dist/bench.mjs",
+    "sim:bot": "vitest run src/sim/bot-carreira.test.ts --silent=false"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

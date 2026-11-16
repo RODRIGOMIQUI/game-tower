@@ -1,6 +1,6 @@
 // Painel de inspeção (direita): detalhes da unidade ou poço selecionado.
 import { MAX_CARROS, tipo, type TipoUnidade } from '../sim/dados';
-import { NIVEIS_PRECO, SATISFACAO_CRITICA, type EstadoUnidade, type NivelPreco } from '../sim/inquilinos';
+import { NIVEIS_PRECO, SATISFACAO_MINIMA, type EstadoUnidade, type NivelPreco } from '../sim/inquilinos';
 import type { ResumoPoco } from '../sim/jogo';
 import { nomeAndar, type Unidade } from '../sim/mundo';
 import type { ModoElevador } from '../sim/transito';
@@ -157,7 +157,7 @@ export class Inspetor {
       .join('');
     const aviso =
       e.avisos > 0
-        ? `<div class="alerta-acesso">Inquilino insatisfeito: ${e.avisos} de 2 avisos. Sai no próximo fechamento se a satisfação continuar abaixo de ${SATISFACAO_CRITICA}.</div>`
+        ? `<div class="alerta-acesso">Inquilino insatisfeito: ${e.avisos} de 2 avisos. Sai no próximo fechamento se a satisfação continuar abaixo de ${SATISFACAO_MINIMA[e.preco]} (limite do preço ${NIVEIS_PRECO[e.preco].nome.toLowerCase()}).</div>`
         : '';
     return `
       <div class="satisf">
@@ -173,7 +173,7 @@ export class Inspetor {
       .map((n) => {
         const p = NIVEIS_PRECO[n];
         const sat = p.satisfacao ? ` · satisfação ${p.satisfacao > 0 ? '+' : ''}${p.satisfacao}` : '';
-        return `<option value="${n}" ${n === e.preco ? 'selected' : ''}>${p.nome} (×${p.mult.toLocaleString('pt-BR')}${sat})</option>`;
+        return `<option value="${n}" ${n === e.preco ? 'selected' : ''}>${p.nome} (×${p.mult.toLocaleString('pt-BR')}${sat}, sai abaixo de ${SATISFACAO_MINIMA[n]})</option>`;
       })
       .join('');
     return `<label class="insp-modo">Preço<select class="sel-preco">${opcoes}</select></label>`;

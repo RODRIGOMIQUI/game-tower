@@ -315,7 +315,19 @@ function validarUnidade(m: Mundo, t: TipoUnidade, x: number, y: number): string 
  * Planeja demolir o retângulo. Se houver unidades nele, só as unidades são
  * demolidas; senão, a estrutura. Assim um clique remove uma coisa por vez.
  */
-export function planejarDemolicao(m: Mundo, x0: number, y0: number, x1: number, y1: number): Plano {
+/**
+ * `semReembolso`: unidades com inquilino (ou já vendidas). Demoli-las despeja
+ * quem está lá e não devolve nada (evita lucrar construindo, vendendo e
+ * demolindo).
+ */
+export function planejarDemolicao(
+  m: Mundo,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  semReembolso?: ReadonlySet<number>,
+): Plano {
   const [xa, xb] = intervalo(x0, x1);
   const [ya, yb] = intervalo(y0, y1);
 
@@ -329,7 +341,7 @@ export function planejarDemolicao(m: Mundo, x0: number, y0: number, x1: number, 
       const u = m.unidades.get(uid)!;
       return {
         tipo: u.tipo, x: u.x, y: u.y, largura: u.largura, altura: u.altura, estrutura: false,
-        custo: -Math.round(tipo(u.tipo).custo * REEMBOLSO_UNIDADE), ok: true, uid,
+        custo: semReembolso?.has(uid) ? 0 : -Math.round(tipo(u.tipo).custo * REEMBOLSO_UNIDADE), ok: true, uid,
       };
     });
     return fecharPlano('demolir', itens);

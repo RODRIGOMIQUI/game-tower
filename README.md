@@ -1,7 +1,19 @@
 # GameTower
 
 Simulador de construção e gestão de arranha-céu em corte lateral.
-Stack: TypeScript + PixiJS + Vite.
+Stack: TypeScript + PixiJS + Vite. Versão atual: **1.0.0-beta.1** ([CHANGELOG](CHANGELOG.md)).
+
+## Como jogar
+
+1. **Nova carreira** no menu inicial (o tutorial guia os primeiros passos).
+2. Construa o **lobby** no térreo, **piso** para cima, um **elevador** (arraste
+   na vertical) e **escritórios**. Inquilinos chegam sozinhos se houver acesso.
+3. Acelere o tempo, acompanhe a fila dos elevadores e adicione carros/poços.
+4. Cresça até as estrelas pedidas (barra ao lado das estrelas) e chegue à Lendária.
+
+**Instalar como aplicativo:** na versão publicada (`npm run build`), o Chrome/Edge
+mostram "Instalar GameTower" na barra de endereço. Depois de aberto uma vez, o
+jogo funciona offline.
 
 ## Rodando
 
@@ -13,6 +25,7 @@ npm run typecheck
 npm run sim          # cenários headless: 2.000 pessoas (hora a hora) e 2 anos de carreira
 LONGO=1 npm run sim:partida   # partida completa ★1 → Lendária com construtor automático (minutos)
 npm run bench:perfil          # desempenho com ~12 mil pessoas + perfil de CPU (tools/bench/dist)
+LONGO=1 npm run sim:bot       # carreira com dinheiro real (balanceamento; minutos)
 npm run data         # regenera src/data/unidades.json a partir de docs/dados/unidades.csv
 ```
 
@@ -60,6 +73,7 @@ src/
 - [Direção de arte e áudio](docs/direcao-de-arte.md): estilo, escala, paleta, som
 - [Economia e balanceamento](docs/economia.md): fórmulas, retorno, curva de progressão
 - [Tabela de unidades](docs/dados/unidades.csv): valores iniciais de todas as unidades
+- [Beta fechado](docs/beta.md): como distribuir, o que perguntar e o que ajustar
 
 ## Roadmap
 
@@ -74,4 +88,4 @@ src/
 | 6 | UX moderna: overlays, relatórios, save | ✅ |
 | 7 | Arte e áudio finais | ✅ |
 | 8 | Performance e escala | ✅ |
-| 9 | Balanceamento, beta, lançamento | — |
+| 9 | Balanceamento, beta, lançamento | 🟡 beta |

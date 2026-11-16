@@ -32,7 +32,8 @@ export const OCUPANTES_POR_TIPO: Record<string, TipoPessoa> = {
 };
 
 /** Ticks de espera por elevador tolerados antes de o estresse subir. */
-export const PACIENCIA: Record<TipoPessoa, number> = { funcionario: 30, morador: 45, hospede: 45, visitante: 40, inspetor: 30 };
+/** Inspetor tem pouca paciência (Fase 9): com 30 min, nunca percebia as filas. */
+export const PACIENCIA: Record<TipoPessoa, number> = { funcionario: 30, morador: 45, hospede: 45, visitante: 40, inspetor: 10 };
 /** Chance de quem mora/trabalha vir de carro (se houver vaga). */
 export const CHANCE_CARRO = 0.35;
 /** Chance de vir de metrô (se houver estação). */
