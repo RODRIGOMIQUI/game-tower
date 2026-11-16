@@ -158,6 +158,18 @@ export interface Ambiente {
   eventos: EventosPessoas;
 }
 
+export interface PopulacaoSalva {
+  pessoas: Pessoa[];
+  porUnidade: [number, number[]][];
+  lotacao: [number, number][];
+  vagasOcupadas: [number, number][];
+  usosEstacionamento: number;
+  bloqueadas: number[];
+  proximoId: number;
+  tickAtual: number;
+  desistenciasHoje: number;
+}
+
 export interface Estatisticas {
   /** Moradores + funcionários + hóspedes (população do GDD). */
   total: number;
@@ -807,6 +819,39 @@ export class Populacao implements Passageiros {
       id: p.id, nome: nomePessoa(p.id), tipo: p.tipo, vip: p.vip, vinculo, situacao,
       estresse: p.estresse, historico: [...p.historico].reverse(), posicao,
     };
+  }
+
+  // ------------------------------------------------------- salvar jogo
+
+  exportar(): PopulacaoSalva {
+    return {
+      pessoas: [...this.pessoas.values()].map((p) => structuredClone(p)),
+      porUnidade: [...this.porUnidade],
+      lotacao: [...this.lotacao],
+      vagasOcupadas: [...this.vagasOcupadas],
+      usosEstacionamento: this.usosEstacionamento,
+      bloqueadas: [...this.bloqueadas],
+      proximoId: this.proximoId,
+      tickAtual: this.tickAtual,
+      desistenciasHoje: this.desistenciasHoje,
+    };
+  }
+
+  importar(d: PopulacaoSalva): void {
+    this.pessoas.clear();
+    for (const p of d.pessoas) this.pessoas.set(p.id, structuredClone(p));
+    this.porUnidade.clear();
+    for (const [k, v] of d.porUnidade) this.porUnidade.set(k, [...v]);
+    this.lotacao.clear();
+    for (const [k, v] of d.lotacao) this.lotacao.set(k, v);
+    this.vagasOcupadas.clear();
+    for (const [k, v] of d.vagasOcupadas) this.vagasOcupadas.set(k, v);
+    this.usosEstacionamento = d.usosEstacionamento;
+    this.bloqueadas.clear();
+    for (const b of d.bloqueadas) this.bloqueadas.add(b);
+    this.proximoId = d.proximoId;
+    this.tickAtual = d.tickAtual;
+    this.desistenciasHoje = d.desistenciasHoje;
   }
 
   // ------------------------------------------------------------ consulta

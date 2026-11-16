@@ -10,6 +10,10 @@ import type { Celula } from './render/camera';
 import { dinheiro } from './ui/formato';
 import { ATALHOS, DEMOLIR, Hud } from './ui/hud';
 import { Inspetor } from './ui/inspetor';
+import { Menu } from './ui/menu';
+import { Relatorios } from './ui/relatorios';
+import { Tutorial } from './ui/tutorial';
+import type { Camada } from './render/cena';
 import type { DaSim, Dinamico, EstadoResumo, ParaSim } from './worker/protocolo';
 import type { EventoProgressao } from './sim/progressao';
 import type { EventoEspecial } from './sim/eventos';
@@ -38,12 +42,97 @@ let pessoaSelecionada = 0;
 let seguindo = false;
 let dinamico: Dinamico | null = null;
 let clique: { x: number; y: number } | null = null;
+/** Velocidade antes de abrir o menu (o jogo pausa com o menu aberto). */
+let velocidadeAntesDoMenu: Velocidade | null = null;
+const CAMADAS: [Camada, string][] = [
+  ['nenhuma', ''],
+  ['estresse', 'Estresse dos ocupantes'],
+  ['satisfacao', 'Insatisfação'],
+  ['ruido', 'Ruído'],
+  ['ocupacao', 'Ocupação (verde ocupada, cinza vaga, marrom suja)'],
+  ['espera', 'Espera por elevador'],
+  ['trafego', 'Tráfego de pessoas'],
+];
 
 const hud = new Hud({
   velocidade: (v) => mudarVelocidade(v),
   ferramenta: (id) => escolherFerramenta(id),
   eventos: (ligado) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'eventos', ligado } }),
+  menu: () => abrirMenuJogo(),
+  desfazer: () => desfazer(),
 });
+
+const tutorial = new Tutorial();
+const relatorios = new Relatorios(() => relatorios.esconder());
+const menu = new Menu({
+  novo: (novo) => {
+    enviar({ tipo: 'iniciar', novo });
+    fecharMenu(true);
+    limparSelecao();
+    document.getElementById('fim')!.hidden = true;
+    if (!novo.sandbox && !novo.cenario) tutorial.iniciar();
+    else tutorial.parar();
+  },
+  carregar: (slot) => enviar({ tipo: 'carregar', slot }),
+  salvar: (slot) => enviar({ tipo: 'salvar', slot }),
+  exportar: () => enviar({ tipo: 'exportar' }),
+  importar: (dados) => worker.postMessage({ tipo: 'importar', dados } satisfies ParaSim, [dados]),
+  relatorios: () => {
+    fecharMenu();
+    enviar({ tipo: 'relatorio' });
+  },
+  fechar: () => fecharMenu(),
+});
+
+function abrirMenuJogo(): void {
+  if (velocidadeAntesDoMenu === null && estado) {
+    velocidadeAntesDoMenu = estado.velocidade;
+    enviar({ tipo: 'velocidade', v: 0 });
+  }
+  enviar({ tipo: 'listarSaves' });
+  menu.abrirJogo();
+}
+
+/** Fecha o menu e devolve a velocidade de antes (ou 1× num jogo novo). */
+function fecharMenu(jogoNovo = false): void {
+  menu.fechar();
+  const v = jogoNovo ? 1 : velocidadeAntesDoMenu;
+  velocidadeAntesDoMenu = null;
+  if (v !== null) enviar({ tipo: 'velocidade', v });
+}
+
+function limparSelecao(): void {
+  selecionado = 0;
+  pessoaSelecionada = 0;
+  seguindo = false;
+  inspetor.mostrar(null, undefined, false, null);
+}
+
+function desfazer(): void {
+  enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'desfazer' } });
+}
+
+function trocarCamada(): void {
+  const i = CAMADAS.findIndex(([c]) => c === cena.camada);
+  const [c, nome] = CAMADAS[(i + 1) % CAMADAS.length]!;
+  cena.camada = c;
+  const leg = document.getElementById('camada')!;
+  leg.hidden = c === 'nenhuma';
+  leg.className = 'painel';
+  leg.innerHTML =
+    c === 'ocupacao'
+      ? `Camada: ${nome} · <kbd>C</kbd> troca`
+      : `Camada: ${nome} <span class="escala"></span> pouco → muito · <kbd>C</kbd> troca`;
+}
+
+function baixar(dados: ArrayBuffer, nome: string): void {
+  const url = URL.createObjectURL(new Blob([dados], { type: 'application/gzip' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nome;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 const inspetor = new Inspetor({
   carros: (uid, delta) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'carros', uid, delta } }),
@@ -93,6 +182,7 @@ function atualizarInspetor(): void {
 app.ticker.add(() => {
   const agora = performance.now();
   cena.desenharDinamica(agora, mundo);
+  cena.desenharCamada();
   cena.desenharFogos(agora, !!dinamico?.festival && data(estado?.tick ?? 0).hora >= 18);
   if (seguindo && pessoaSelecionada) {
     const p = cena.posicaoPessoa(pessoaSelecionada, agora) ?? dinamico?.ficha?.posicao;
@@ -107,6 +197,8 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
     case 'estado':
       estado = msg.estado;
       hud.atualizar(estado);
+      tutorial.atualizar(mundo, estado);
+      cena.definirLote(estado.contexto.lote);
       cena.atualizarCeu(data(estado.tick).minutoDoDia);
       break;
     case 'mundo':
@@ -120,14 +212,16 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
       cena.receberDinamica(msg, performance.now());
       cena.desenharAlertas(mundo, msg.semAcesso);
       cena.atualizarSituacoes(msg.unidades, msg.versaoUnidades);
+      cena.atualizarEsperas(msg.pocos);
       if (selecionado || pessoaSelecionada) atualizarInspetor();
       break;
     case 'resultado': {
       const r = msg.resultado;
       if (!r.ok) hud.aviso(r.motivo ?? 'Não foi possível', 'erro');
       else {
-        if (r.acao === 'preco') break;
-        const verbo = r.acao === 'construir' ? 'Construído' : r.acao === 'demolir' ? 'Demolido' : 'Elevador atualizado';
+        if (r.acao === 'preco' || r.acao === 'eventos') break;
+        const verbo =
+          r.acao === 'construir' ? 'Construído' : r.acao === 'demolir' ? 'Demolido' : r.acao === 'desfazer' ? 'Desfeito' : 'Elevador atualizado';
         const extra = r.motivo ? ` (parte falhou: ${r.motivo})` : '';
         hud.aviso(`${verbo}: ${r.feitos} · ${dinheiro(-r.custo)}${extra}`, r.motivo ? 'info' : 'ok');
       }
@@ -148,18 +242,53 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
           if (ev.caixa < 0) hud.aviso('Caixa negativo! Dois trimestres seguidos assim e a torre vai à falência.', 'erro');
         } else if (ev.tipo === 'falencia') {
           document.getElementById('fim')!.hidden = false;
+        } else if (ev.tipo === 'cenario') {
+          hud.aviso(`Cenário "${ev.nome}" concluído! Pode continuar jogando.`, 'conquista', 12000);
         } else if (ehProgressao(ev)) avisarProgressao(ev);
         else avisarEvento(ev);
       }
       break;
+    case 'saves':
+      menu.atualizarSaves(msg.lista);
+      break;
+    case 'salvo':
+      hud.aviso(msg.ok ? (msg.slot === 'auto' ? 'Jogo salvo automaticamente.' : `Jogo salvo no espaço ${msg.slot}.`) : `Não foi possível salvar: ${msg.erro}`, msg.ok ? 'ok' : 'erro');
+      if (msg.ok && msg.slot !== 'auto') fecharMenu();
+      break;
+    case 'carregado':
+      if (msg.ok) {
+        limparSelecao();
+        tutorial.parar();
+        document.getElementById('fim')!.hidden = true;
+        velocidadeAntesDoMenu = null;
+        menu.fechar();
+        enviar({ tipo: 'velocidade', v: 0 });
+        hud.aviso('Jogo carregado (pausado). Espaço continua.', 'ok', 4000);
+      } else hud.aviso(`Não foi possível carregar: ${msg.erro}`, 'erro', 6000);
+      break;
+    case 'exportado':
+      baixar(msg.dados, msg.nome);
+      hud.aviso(`Arquivo ${msg.nome} gerado.`, 'ok');
+      break;
+    case 'relatorio':
+      relatorios.mostrar(msg.historico);
+      break;
   }
 };
 
+// Começo: menu inicial (ou sandbox direto com ?sandbox=1, útil no desenvolvimento).
 const sandbox = new URLSearchParams(location.search).get('sandbox') === '1';
-document.getElementById('novo-jogo')!.onclick = () => location.reload();
-enviar({ tipo: 'iniciar', seed: Date.now() >>> 0, sandbox });
+document.getElementById('novo-jogo')!.onclick = () => {
+  document.getElementById('fim')!.hidden = true;
+  menu.abrirInicio();
+};
+if (sandbox) enviar({ tipo: 'iniciar', novo: { seed: Date.now() >>> 0, sandbox: true } });
+else {
+  enviar({ tipo: 'listarSaves' });
+  menu.abrirInicio();
+}
 
-function ehProgressao(ev: EventoProgressao | EventoEspecial): ev is EventoProgressao {
+function ehProgressao(ev: EventoProgressao | EventoEspecial | { tipo: 'cenario' }): ev is EventoProgressao {
   return ['estrela', 'inspecao_agendada', 'inspecao', 'inauguracao_agendada', 'inauguracao'].includes(ev.tipo);
 }
 
@@ -277,11 +406,7 @@ function planoAtual(): Plano | null {
   const b = arrasto?.fim ?? hover;
   if (!a || !b) return null;
   if (ferramenta === DEMOLIR) return planejarDemolicao(mundo, a.x, a.y, b.x, b.y);
-  return planejarConstrucao(mundo, ferramenta, a.x, a.y, b.x, b.y, {
-    dinheiro: estado.dinheiro,
-    estrela: estado.estrela,
-    ignorarEstrela: estado.sandbox,
-  });
+  return planejarConstrucao(mundo, ferramenta, a.x, a.y, b.x, b.y, estado.contexto);
 }
 
 function atualizarFantasma(): void {
@@ -379,8 +504,30 @@ canvas.addEventListener(
 
 const PASSO_TECLA = 80;
 window.addEventListener('keydown', (e) => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   const k = e.key.toLowerCase();
+  // Com menu aberto, só Esc (fecha) funciona; o jogo está pausado.
+  if (menu.aberto) {
+    if (k === 'escape' && velocidadeAntesDoMenu !== null) fecharMenu();
+    return;
+  }
+  if (relatorios.aberto && (k === 'escape' || k === 'r')) {
+    relatorios.esconder();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && k === 'z') {
+    e.preventDefault();
+    desfazer();
+    return;
+  }
+  if (k === 'm') return abrirMenuJogo();
+  if (k === 'r') return enviar({ tipo: 'relatorio' });
+  if (k === 'c') return trocarCamada();
+  if (e.key === '?') {
+    abrirMenuJogo();
+    menu.abrirAtalhos();
+    return;
+  }
   const mover = (dx: number, dy: number) => {
     cena.camera.mover(dx, dy);
     cena.aplicarCamera();

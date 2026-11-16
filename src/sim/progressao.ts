@@ -79,6 +79,18 @@ export interface ContextoProgressao {
   rng: Rng;
 }
 
+export interface ProgressaoSalva {
+  estrela: number;
+  escala: number;
+  etapaAgendada: number | null;
+  proximaTentativa: number;
+  inspetor: number;
+  convidados: number;
+  presentes: number;
+  estresseConvidados: number;
+  emEtapa: boolean;
+}
+
 export class Progressao {
   estrela = 1;
   private etapaAgendada: number | null = null; // dia
@@ -91,6 +103,25 @@ export class Progressao {
 
   /** `escala` reduz as metas de população (testes). */
   constructor(private readonly escala = 1) {}
+
+  exportar(): ProgressaoSalva {
+    return {
+      estrela: this.estrela, escala: this.escala, etapaAgendada: this.etapaAgendada,
+      proximaTentativa: this.proximaTentativa, inspetor: this.inspetor, convidados: this.convidados,
+      presentes: this.presentes, estresseConvidados: this.estresseConvidados, emEtapa: this.emEtapa,
+    };
+  }
+
+  importar(d: ProgressaoSalva): void {
+    this.estrela = d.estrela;
+    this.etapaAgendada = d.etapaAgendada;
+    this.proximaTentativa = d.proximaTentativa;
+    this.inspetor = d.inspetor;
+    this.convidados = d.convidados;
+    this.presentes = d.presentes;
+    this.estresseConvidados = d.estresseConvidados;
+    this.emEtapa = d.emEtapa;
+  }
 
   alvoPopulacao(nivel: number): number {
     return Math.max(1, Math.round((NIVEIS[nivel]?.populacao ?? 0) * this.escala));

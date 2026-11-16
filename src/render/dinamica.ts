@@ -73,6 +73,13 @@ export class CamadaDinamica {
     return null;
   }
 
+  /** Posições (coluna, andar) de todas as pessoas visíveis no último quadro. */
+  *posicoes(): Generator<[number, number]> {
+    const q = this.atual;
+    if (!q) return;
+    for (let i = 0; i < q.pessoas.length; i += 4) yield [q.pessoas[i + 1]!, q.pessoas[i + 2]!];
+  }
+
   /** Pessoa visível mais próxima de (coluna, andar fracionário), dentro de `raio` colunas. */
   pessoaEm(x: number, y: number, raio: number): number {
     const q = this.atual;

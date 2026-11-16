@@ -42,7 +42,7 @@ export interface Carro {
   viagensHoje: number;
 }
 
-interface Fila {
+export interface Fila {
   sobe: number[];
   desce: number[];
   /** Carros a caminho desta chamada. Filas grandes aceitam vários carros. */
@@ -379,6 +379,30 @@ export class Poco {
     return Math.max(this.esperaMedia, (this.aguardando() / vazao) * ciclo);
   }
 
+  /** Estado dinâmico para salvar o jogo. */
+  exportar(): PocoSalvo {
+    return {
+      uid: this.uid,
+      modo: this.modo,
+      esperaMedia: this.esperaMedia,
+      atendidos: this.atendidos,
+      proximoCarro: this.proximoCarro,
+      carros: this.carros.map((c) => ({ ...c, passageiros: [...c.passageiros], paradas: [...c.paradas] })),
+      filas: [...this.filas].map(([y, f]) => [y, { sobe: [...f.sobe], desce: [...f.desce], reservaSobe: [...f.reservaSobe], reservaDesce: [...f.reservaDesce] }]),
+    };
+  }
+
+  importar(d: PocoSalvo): void {
+    this.modo = d.modo;
+    this.esperaMedia = d.esperaMedia;
+    this.atendidos = d.atendidos;
+    this.proximoCarro = d.proximoCarro;
+    this.carros.length = 0;
+    for (const c of d.carros) this.carros.push({ ...c, paradas: new Set(c.paradas) });
+    this.filas.clear();
+    for (const [y, f] of d.filas) this.filas.set(y, f);
+  }
+
   /** Registra o tempo de espera de alguém que embarcou. */
   registrarEspera(ticks: number): void {
     this.esperaMedia = this.esperaMedia * 0.95 + ticks * 0.05;
@@ -393,6 +417,16 @@ function tirar(lista: number[], v: number): void {
 
 function tipoCapacidade(id: string): number {
   return tipo(id).capacidade;
+}
+
+export interface PocoSalvo {
+  uid: number;
+  modo: ModoElevador;
+  esperaMedia: number;
+  atendidos: number;
+  proximoCarro: number;
+  carros: (Omit<Carro, 'paradas'> & { paradas: number[] })[];
+  filas: [number, Fila][];
 }
 
 export interface Escada {
@@ -447,6 +481,15 @@ export class Transito {
 
   passo(tick: number, hora: number, p: Passageiros): void {
     for (const poco of this.pocos.values()) poco.passo(tick, hora, p);
+  }
+
+  exportar(): PocoSalvo[] {
+    return [...this.pocos.values()].map((p) => p.exportar());
+  }
+
+  /** Restaura o estado dos poços (depois de `sincronizar` com o mundo carregado). */
+  importar(d: PocoSalvo[]): void {
+    for (const ps of d) this.pocos.get(ps.uid)?.importar(ps);
   }
 
   manutencaoTrimestral(): number {

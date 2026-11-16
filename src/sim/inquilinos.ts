@@ -65,6 +65,15 @@ export type EventoInquilinos =
   | { tipo: 'vip_chegou'; uid: number }
   | { tipo: 'vip'; boa: boolean; estresse: number };
 
+export interface InquilinosSalvos {
+  estados: EstadoUnidade[];
+  versao: number;
+  creditoLimpeza: number;
+  reputacao: number;
+  reputacaoAte: number;
+  vipNoTrimestre: boolean;
+}
+
 /** Quem recebe o dinheiro (o Jogo). */
 export interface Caixa {
   creditar(categoria: CategoriaReceita, valor: number): void;
@@ -475,10 +484,33 @@ export class Inquilinos {
     }
   }
 
-  /** Para o render: [uid, situação, satisfação, avisos] por unidade. */
+  exportar(): InquilinosSalvos {
+    return {
+      estados: [...this.estados.values()].map((e) => structuredClone(e)),
+      versao: this.versao,
+      creditoLimpeza: this.creditoLimpeza,
+      reputacao: this.reputacao,
+      reputacaoAte: this.reputacaoAte,
+      vipNoTrimestre: this.vipNoTrimestre,
+    };
+  }
+
+  importar(d: InquilinosSalvos): void {
+    this.estados.clear();
+    for (const e of d.estados) this.estados.set(e.uid, structuredClone(e));
+    this.versao = d.versao;
+    this.creditoLimpeza = d.creditoLimpeza;
+    this.reputacao = d.reputacao;
+    this.reputacaoAte = d.reputacaoAte;
+    this.vipNoTrimestre = d.vipNoTrimestre;
+  }
+
+  /** Para o render: [uid, situação, satisfação, avisos, ruído, estresse] por unidade. */
   resumo(): Float32Array {
     const r: number[] = [];
-    for (const e of this.estados.values()) r.push(e.uid, CODIGO_SITUACAO[e.situacao], e.satisfacao, e.avisos);
+    for (const e of this.estados.values()) {
+      r.push(e.uid, CODIGO_SITUACAO[e.situacao], e.satisfacao, e.avisos, e.componentes.ruido, e.componentes.estresse);
+    }
     return new Float32Array(r);
   }
 }

@@ -1,6 +1,8 @@
 // Roda a simulação fora do thread principal. Converte tempo real em ticks
 // conforme a velocidade e publica o estado para o render.
-import { Jogo } from '../sim/jogo';
+import { Jogo, type Save } from '../sim/jogo';
+import { data } from '../sim/relogio';
+import { comprimir, descomprimir, gravar, ler, listar } from './armazenamento';
 import { TICKS_POR_SEGUNDO_1X, type Velocidade } from '../sim/relogio';
 import type { DaSim, ParaSim } from './protocolo';
 
@@ -48,6 +50,16 @@ function publicar(forcar = false): void {
         encerrado: jogo.encerrado,
         progresso: jogo.progresso(),
         eventosLigados: jogo.eventos.ligado,
+        podeDesfazer: jogo.podeDesfazer,
+        contexto: jogo.contexto(),
+        cenario: jogo.cenario
+          ? {
+              nome: jogo.cenario.nome,
+              objetivo: jogo.cenario.objetivo,
+              progresso: jogo.avaliarCenario().progresso,
+              concluido: jogo.cenarioConcluido,
+            }
+          : null,
       },
     });
     const pessoas = jogo.populacao.visiveis();
@@ -81,13 +93,65 @@ function publicar(forcar = false): void {
   }
 }
 
-escopo.onmessage = (e) => {
+/** Troca o jogo atual (novo ou carregado) e força o reenvio de tudo. */
+function trocarJogo(j: Jogo): void {
+  jogo = j;
+  versaoEnviada = -1;
+  tickEnviado = -1;
+  inspecionado = 0;
+  pessoaInspecionada = 0;
+  publicar(true);
+}
+
+async function salvarEm(slot: string): Promise<void> {
+  if (!jogo) return;
+  try {
+    await gravar(slot, jogo.salvar());
+    enviar({ tipo: 'salvo', slot, ok: true });
+    enviar({ tipo: 'saves', lista: await listar() });
+  } catch (err) {
+    enviar({ tipo: 'salvo', slot, ok: false, erro: String(err) });
+  }
+}
+
+function carregarDe(save: Save | null): void {
+  try {
+    if (!save) throw new Error('Nenhum jogo salvo neste espaço');
+    trocarJogo(Jogo.carregar(save));
+    enviar({ tipo: 'carregado', ok: true });
+  } catch (err) {
+    enviar({ tipo: 'carregado', ok: false, erro: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+escopo.onmessage = async (e) => {
   const msg = e.data;
   if (msg.tipo === 'iniciar') {
-    jogo = new Jogo({ seed: msg.seed, sandbox: msg.sandbox });
-    publicar(true);
-  } else if (!jogo) {
+    trocarJogo(new Jogo({ seed: msg.novo.seed, sandbox: msg.novo.sandbox, cenario: msg.novo.cenario }));
     return;
+  }
+  if (msg.tipo === 'listarSaves') {
+    enviar({ tipo: 'saves', lista: await listar().catch(() => []) });
+    return;
+  }
+  if (msg.tipo === 'carregar') {
+    carregarDe(await ler(msg.slot).catch(() => null));
+    return;
+  }
+  if (msg.tipo === 'importar') {
+    carregarDe(await descomprimir(msg.dados).catch(() => null));
+    return;
+  }
+  if (!jogo) {
+    return;
+  } else if (msg.tipo === 'salvar') {
+    await salvarEm(msg.slot);
+  } else if (msg.tipo === 'exportar') {
+    const dados = await comprimir(jogo.salvar());
+    const d = data(jogo.tick);
+    enviar({ tipo: 'exportado', dados, nome: `gametower-ano${d.ano}-T${d.trimestre}-dia${d.diaNoTri}.gametower` }, [dados]);
+  } else if (msg.tipo === 'relatorio') {
+    enviar({ tipo: 'relatorio', historico: jogo.historico });
   } else if (msg.tipo === 'comando') {
     enviar({ tipo: 'resultado', id: msg.id, resultado: jogo.comando(msg.cmd) });
     publicar(true);
@@ -119,6 +183,8 @@ setInterval(() => {
   if (n > 0) {
     const eventos = jogo.avancar(n);
     if (eventos.length) enviar({ tipo: 'eventos', eventos });
+    // Salvamento automático a cada fechamento de trimestre.
+    if (eventos.some((ev) => ev.tipo === 'trimestre') && !jogo.encerrado) void salvarEm('auto');
   }
   publicar();
 }, 50);

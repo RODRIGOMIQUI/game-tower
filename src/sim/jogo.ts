@@ -1,13 +1,28 @@
 // Estado autoritativo do jogo. Puro: sem DOM, sem render, sem relógio real.
 // Dado o mesmo seed e a mesma sequência de comandos por tick, o resultado é idêntico.
 
-import { executarPlano, planejarConstrucao, planejarDemolicao, type Contexto, type Plano } from './construcao';
+import {
+  desfazerConstrucao,
+  desfazerDemolicao,
+  executarPlano,
+  planejarConstrucao,
+  planejarDemolicao,
+  type Contexto,
+  type ItemPlano,
+  type Plano,
+} from './construcao';
 import { ehElevador, tipo } from './dados';
 import { Est, LARGURA, Mundo, type SnapshotMundo } from './mundo';
 import { Inquilinos, POPULACAO_EXIGE_RECICLAGEM, type CategoriaReceita, type NivelPreco } from './inquilinos';
 import { centro, Populacao, type Ambiente, type Entrada, type Estacionamento } from './pessoas';
 import { Progressao, type EventoProgressao, type Progresso } from './progressao';
-import { Eventos, type ContextoEventos, type EventoEspecial } from './eventos';
+import { Eventos, type ContextoEventos, type EventoEspecial, type EventosSalvos } from './eventos';
+import type { InquilinosSalvos } from './inquilinos';
+import type { PopulacaoSalva } from './pessoas';
+import type { ProgressaoSalva } from './progressao';
+import type { PocoSalvo } from './transito';
+import { avaliar, cenario, type CenarioDef } from './cenarios';
+import { Estado } from './pessoas';
 import { data, inicioDeTrimestre, MIN_POR_DIA, TICK_INICIAL } from './relogio';
 import { Rng } from './rng';
 import { Roteador } from './rotas';
@@ -25,11 +40,12 @@ export type Comando =
   | { tipo: 'carros'; uid: number; delta: 1 | -1 }
   | { tipo: 'modo'; uid: number; modo: ModoElevador }
   | { tipo: 'preco'; uid: number; nivel: NivelPreco }
-  | { tipo: 'eventos'; ligado: boolean };
+  | { tipo: 'eventos'; ligado: boolean }
+  | { tipo: 'desfazer' };
 
 export interface ResultadoComando {
   ok: boolean;
-  acao: Plano['acao'] | 'elevador' | 'preco' | 'eventos';
+  acao: Plano['acao'] | 'elevador' | 'preco' | 'eventos' | 'desfazer';
   feitos: number;
   /** Positivo = gasto; negativo = reembolso. */
   custo: number;
@@ -49,7 +65,8 @@ export type EventoJogo =
   | { tipo: 'trimestre'; tick: number; manutencao: number; livro: Livro; saidas: number; caixa: number }
   | { tipo: 'falencia'; tick: number }
   | EventoProgressao
-  | EventoEspecial;
+  | EventoEspecial
+  | { tipo: 'cenario'; nome: string };
 
 /** Trimestres seguidos com caixa negativo até a falência (modo carreira). */
 export const TRIMESTRES_ATE_FALENCIA = 2;
@@ -72,7 +89,69 @@ export interface OpcoesJogo {
   escalaPopulacao?: number;
   /** Eventos especiais (incêndio, pane, pragas...). Padrão: ligados. */
   eventos?: boolean;
+  /** Id do cenário (docs/gdd.md §12). */
+  cenario?: string;
 }
+
+/** Um ponto por dia para os relatórios. */
+export interface RegistroDia {
+  dia: number;
+  caixa: number;
+  receitas: number;
+  despesas: number;
+  populacao: number;
+  satisfacao: number;
+  espera: number;
+  estresse: number;
+  desistencias: number;
+}
+export const MAX_HISTORICO = 512;
+
+/** Versão do formato de save; mude ao quebrar compatibilidade. */
+export const VERSAO_SAVE = 1;
+
+/** Resumo exibido na lista de jogos salvos. */
+export interface MetaSave {
+  tick: number;
+  dinheiro: number;
+  estrela: number;
+  populacao: number;
+  sandbox: boolean;
+}
+
+export interface Save {
+  versao: number;
+  meta: MetaSave;
+  tick: number;
+  dinheiro: number;
+  sandbox: boolean;
+  rng: number;
+  versaoMundo: number;
+  livro: Livro;
+  trimestresNegativos: number;
+  encerrado: boolean;
+  mundo: { estrutura: string; unidades: import('./mundo').Unidade[]; proximoUid: number };
+  pocos: PocoSalvo[];
+  populacao: PopulacaoSalva;
+  inquilinos: InquilinosSalvos;
+  progressao: ProgressaoSalva;
+  eventos: EventosSalvos;
+  cenario?: string;
+  cenarioConcluido: boolean;
+  historico: RegistroDia[];
+  receitasAcumuladas: number;
+  ultimoRegistro: { caixa: number; receitas: number };
+}
+
+/** Ações de construir/demolir guardadas para o desfazer (docs/gdd.md §11). */
+interface AcaoDesfazer {
+  acao: 'construir' | 'demolir';
+  itens: ItemPlano[];
+  /** Unidades criadas pela construção. */
+  uids: number[];
+  custo: number;
+}
+export const MAX_DESFAZER = 50;
 
 export class Jogo {
   mundo = new Mundo();
@@ -96,12 +175,22 @@ export class Jogo {
   semAcesso: number[] = [];
   private semAcessoSet = new Set<number>();
   livro: Livro = livroVazio();
+  private desfazerPilha: AcaoDesfazer[] = [];
+  readonly cenario: CenarioDef | undefined;
+  cenarioConcluido = false;
+  historico: RegistroDia[] = [];
+  private receitasAcumuladas = 0;
+  private ultimoRegistro = { caixa: 0, receitas: 0 };
   trimestresNegativos = 0;
   /** Fim de jogo por falência: a simulação para. */
   encerrado = false;
 
   constructor(opts: OpcoesJogo = {}) {
     this.rng = new Rng(opts.seed ?? 1);
+    this.cenario = cenario(opts.cenario);
+    if (this.cenario) {
+      opts = { ...opts, dinheiro: opts.dinheiro ?? this.cenario.dinheiro, estrela: opts.estrela ?? this.cenario.estrela };
+    }
     this.sandbox = opts.sandbox ?? false;
     this.dinheiro = opts.dinheiro ?? (this.sandbox ? DINHEIRO_SANDBOX : DINHEIRO_INICIAL);
     this.progressao = new Progressao(opts.escalaPopulacao ?? 1);
@@ -109,6 +198,7 @@ export class Jogo {
     this.eventos.ligado = opts.eventos ?? true;
     this.inquilinos = new Inquilinos({ creditar: (c, v) => this.creditar(c, v) });
     this.populacao = new Populacao(this.ambiente());
+    this.ultimoRegistro = { caixa: this.dinheiro, receitas: 0 };
   }
 
   get estrela(): number {
@@ -131,11 +221,19 @@ export class Jogo {
 
   private creditar(categoria: CategoriaReceita, valor: number): void {
     this.dinheiro += valor;
+    this.receitasAcumuladas += valor;
     this.livro.receitas[categoria] += valor;
   }
 
   contexto(): Contexto {
-    return { dinheiro: this.dinheiro, estrela: this.estrela, ignorarEstrela: this.sandbox };
+    const c = this.cenario;
+    return {
+      dinheiro: this.dinheiro,
+      estrela: this.estrela,
+      ignorarEstrela: this.sandbox,
+      lote: c?.lote,
+      pocosRestantes: c?.maxPocos !== undefined ? c.maxPocos - this.numPocos : undefined,
+    };
   }
 
   private ambiente(): Ambiente {
@@ -166,6 +264,7 @@ export class Jogo {
       const ok = this.inquilinos.mudarPreco(cmd.uid, cmd.nivel);
       return { ok, acao: 'preco', feitos: ok ? 1 : 0, custo: 0, motivo: ok ? undefined : 'Esta unidade não tem preço' };
     }
+    if (cmd.tipo === 'desfazer') return this.desfazer();
     if (cmd.tipo === 'eventos') {
       this.eventos.ligado = cmd.ligado;
       return { ok: true, acao: 'eventos', feitos: 1, custo: 0 };
@@ -180,7 +279,12 @@ export class Jogo {
         ? planejarConstrucao(this.mundo, cmd.item, cmd.x0, cmd.y0, cmd.x1, cmd.y1, this.contexto())
         : planejarDemolicao(this.mundo, cmd.x0, cmd.y0, cmd.x1, cmd.y1);
     if (plano.validos > 0) {
+      const uidAntes = this.mundo.proximoUid;
       executarPlano(this.mundo, plano);
+      const uids: number[] = [];
+      for (let u = uidAntes; u < this.mundo.proximoUid; u++) uids.push(u);
+      this.desfazerPilha.push({ acao: plano.acao, itens: plano.itens.filter((i) => i.ok), uids, custo: plano.custoTotal });
+      if (this.desfazerPilha.length > MAX_DESFAZER) this.desfazerPilha.shift();
       this.dinheiro -= plano.custoTotal;
       this.livro.construcao += plano.custoTotal;
       this.mundoMudou();
@@ -196,6 +300,39 @@ export class Jogo {
       custo: plano.custoTotal,
       motivo: plano.motivo,
     };
+  }
+
+  get podeDesfazer(): number {
+    return this.desfazerPilha.length;
+  }
+
+  /** Desfaz a última construção/demolição, devolvendo (ou cobrando de volta) o valor. */
+  private desfazer(): ResultadoComando {
+    const r = (ok: boolean, custo: number, motivo?: string): ResultadoComando => ({
+      ok, acao: 'desfazer', feitos: ok ? 1 : 0, custo, motivo,
+    });
+    const a = this.desfazerPilha[this.desfazerPilha.length - 1];
+    if (!a) return r(false, 0, 'Nada para desfazer');
+    // Desfazer construção devolve o gasto; desfazer demolição cobra o reembolso de volta.
+    const custo = -a.custo;
+    if (custo > this.dinheiro) return r(false, 0, 'Dinheiro insuficiente para desfazer');
+    let motivo: string | undefined;
+    if (a.acao === 'construir') motivo = desfazerConstrucao(this.mundo, a.itens, a.uids);
+    else {
+      const res = desfazerDemolicao(this.mundo, a.itens);
+      motivo = res.motivo;
+      // As unidades reconstruídas têm uid novo: atualiza as ações anteriores.
+      for (const ant of this.desfazerPilha) {
+        ant.uids = ant.uids.map((u) => res.uids.get(u) ?? u);
+        for (const it of ant.itens) if (it.uid) it.uid = res.uids.get(it.uid) ?? it.uid;
+      }
+    }
+    if (motivo) return r(false, 0, motivo);
+    this.desfazerPilha.pop();
+    this.dinheiro -= custo;
+    this.livro.construcao += custo;
+    this.mundoMudou();
+    return r(true, custo);
   }
 
   private mudarCarros(uid: number, delta: 1 | -1): ResultadoComando {
@@ -278,6 +415,7 @@ export class Jogo {
       const minuto = this.tick % MIN_POR_DIA;
       if (minuto === 0) {
         const dia = data(this.tick).diaTotal;
+        this.registrarDia(dia);
         this.inquilinos.fimDoDia(this.populacao, this.semReciclagem(), dia);
         this.inquilinos.pragas(this.mundo, dia, this.eventos.ligado);
         this.eventos.diario(this.transito);
@@ -291,6 +429,10 @@ export class Jogo {
         eventos.push(...this.eventos.hora(this.tick, this.contextoEventos()));
         this.inquilinos.hora(this.tick, this.contextoEconomia());
         eventos.push(...this.progressao.hora(this.tick, this.contextoProgressao()));
+        if (this.cenario && !this.cenarioConcluido && minuto === 23 * 60 && this.avaliarCenario().ok) {
+          this.cenarioConcluido = true;
+          eventos.push({ tipo: 'cenario', nome: this.cenario.nome });
+        }
       }
       // Filas mudam ao longo do dia: rotas são recalculadas a cada 15 minutos.
       if (minuto % INTERVALO_ROTAS === 0) this.roteador.limparCache();
@@ -307,6 +449,123 @@ export class Jogo {
       }
     }
     return eventos;
+  }
+
+  avaliarCenario() {
+    let hospedes = 0;
+    for (const p of this.populacao.pessoas.values()) if (p.tipo === 'hospede' && p.estado === Estado.NaUnidade) hospedes++;
+    return avaliar(this.cenario!, {
+      populacao: this.populacaoTotal(),
+      hospedesAgora: hospedes,
+      estados: this.inquilinos.estados.values(),
+    });
+  }
+
+  /** Meia-noite: um ponto do histórico para os relatórios. */
+  private registrarDia(dia: number): void {
+    const est = this.populacao.estatisticas();
+    let satisfacao = 0;
+    let n = 0;
+    for (const e of this.inquilinos.estados.values()) {
+      if (e.situacao === 'vaga') continue;
+      satisfacao += e.satisfacao;
+      n++;
+    }
+    const pocos = [...this.transito.pocos.values()];
+    const receitas = this.receitasAcumuladas - this.ultimoRegistro.receitas;
+    const variacao = this.dinheiro - this.ultimoRegistro.caixa;
+    this.historico.push({
+      dia: dia - 1,
+      caixa: this.dinheiro,
+      receitas,
+      despesas: receitas - variacao,
+      populacao: est.total,
+      satisfacao: n ? satisfacao / n : 0,
+      espera: pocos.length ? pocos.reduce((s, p) => s + p.esperaMedia, 0) / pocos.length : 0,
+      estresse: est.estresseMedio,
+      desistencias: est.desistenciasHoje,
+    });
+    if (this.historico.length > MAX_HISTORICO) this.historico.shift();
+    this.ultimoRegistro = { caixa: this.dinheiro, receitas: this.receitasAcumuladas };
+  }
+
+  // ---------------------------------------------------------- salvar jogo
+
+  meta(): MetaSave {
+    return { tick: this.tick, dinheiro: this.dinheiro, estrela: this.estrela, populacao: this.populacaoTotal(), sandbox: this.sandbox };
+  }
+
+  /**
+   * Estado completo, serializável em JSON. As rotas em cache não são salvas;
+   * por isso o cache também é limpo aqui, e o jogo original e o carregado
+   * continuam idênticos daqui em diante.
+   */
+  salvar(): Save {
+    this.roteador.limparCache();
+    this.roteadorEquipe.limparCache();
+    return structuredClone({
+      versao: VERSAO_SAVE,
+      meta: this.meta(),
+      tick: this.tick,
+      dinheiro: this.dinheiro,
+      sandbox: this.sandbox,
+      rng: this.rng.estado,
+      versaoMundo: this.versaoMundo,
+      livro: this.livro,
+      trimestresNegativos: this.trimestresNegativos,
+      encerrado: this.encerrado,
+      mundo: {
+        estrutura: paraBase64(this.mundo.estrutura),
+        unidades: [...this.mundo.unidades.values()],
+        proximoUid: this.mundo.proximoUid,
+      },
+      pocos: this.transito.exportar(),
+      populacao: this.populacao.exportar(),
+      inquilinos: this.inquilinos.exportar(),
+      progressao: this.progressao.exportar(),
+      eventos: this.eventos.exportar(),
+      cenario: this.cenario?.id,
+      cenarioConcluido: this.cenarioConcluido,
+      historico: this.historico,
+      receitasAcumuladas: this.receitasAcumuladas,
+      ultimoRegistro: this.ultimoRegistro,
+    });
+  }
+
+  static carregar(s: Save): Jogo {
+    if (s.versao !== VERSAO_SAVE) throw new Error(`Save da versão ${s.versao}; esta versão do jogo lê a ${VERSAO_SAVE}.`);
+    const j = new Jogo({ sandbox: s.sandbox, escalaPopulacao: s.progressao.escala, dinheiro: s.dinheiro, cenario: s.cenario });
+    j.cenarioConcluido = s.cenarioConcluido;
+    j.historico = structuredClone(s.historico);
+    j.receitasAcumuladas = s.receitasAcumuladas;
+    j.ultimoRegistro = { ...s.ultimoRegistro };
+    const ocupacao = new Int32Array(j.mundo.ocupacao.length);
+    j.mundo = new Mundo({ estrutura: deBase64(s.mundo.estrutura), ocupacao, unidades: [], proximoUid: s.mundo.proximoUid });
+    for (const u of s.mundo.unidades) {
+      j.mundo.proximoUid = u.uid;
+      j.mundo.adicionarUnidade(u.tipo, u.x, u.y, u.largura, u.altura);
+    }
+    j.mundo.proximoUid = s.mundo.proximoUid;
+    j.tick = s.tick;
+    j.rng.estado = s.rng;
+    j.versaoMundo = s.versaoMundo;
+    j.livro = structuredClone(s.livro);
+    j.trimestresNegativos = s.trimestresNegativos;
+    j.encerrado = s.encerrado;
+    j.transito.sincronizar(j.mundo);
+    j.transito.importar(s.pocos);
+    j.roteador.reconstruir(j.mundo, j.transito);
+    j.roteadorEquipe.reconstruir(j.mundo, j.transito);
+    j.populacao.atualizarAmbiente(j.ambiente());
+    j.populacao.importar(s.populacao);
+    j.inquilinos.importar(s.inquilinos);
+    j.progressao.importar(s.progressao);
+    j.eventos.importar(s.eventos);
+    j.semAcesso = j.populacao.unidadesSemAcesso();
+    j.semAcessoSet = new Set(j.semAcesso);
+    j.roteador.limparCache();
+    j.roteadorEquipe.limparCache();
+    return j;
   }
 
   /** Acima de 3.000 pessoas, a torre precisa de reciclagem (docs/gdd.md §7). */
@@ -415,4 +674,17 @@ function entradas(m: Mundo): Entrada[] {
     }
   }
   return r;
+}
+
+function paraBase64(b: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+function deBase64(t: string): Uint8Array {
+  const bin = atob(t);
+  const b = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  return b;
 }

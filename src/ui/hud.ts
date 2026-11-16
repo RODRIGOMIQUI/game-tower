@@ -37,6 +37,8 @@ export interface AcoesHud {
   velocidade(v: Velocidade): void;
   ferramenta(id: string | null): void;
   eventos(ligado: boolean): void;
+  menu(): void;
+  desfazer(): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe?: string, texto?: string): HTMLElementTagNameMap[K] {
@@ -61,6 +63,9 @@ export class Hud {
   private readonly horaEl = el('span', 'valor');
   private readonly sandboxEl = el('span', 'sandbox', 'SANDBOX');
   private readonly eventosEl = el('button', 'botao eventos-sandbox');
+  private readonly desfazerEl = el('button', 'botao acao-hud', '↶');
+  private readonly menuEl = el('button', 'botao acao-hud', '☰');
+  private readonly cenarioEl = el('span', 'cenario-chip');
   private eventosLigados = true;
   private readonly botoesVel = new Map<Velocidade, HTMLButtonElement>();
   private readonly botoesPaleta = new Map<string, HTMLButtonElement>();
@@ -101,7 +106,13 @@ export class Hud {
     this.eventosEl.hidden = true;
     this.eventosEl.title = 'Eventos especiais (incêndio, pane, pragas, VIP, festival, achado): clique para ligar ou desligar';
     this.eventosEl.onclick = () => this.acoes.eventos(!this.eventosLigados);
+    this.menuEl.title = 'Menu: salvar, carregar, relatórios… (M)';
+    this.menuEl.onclick = () => this.acoes.menu();
+    this.desfazerEl.title = 'Desfazer (Ctrl+Z)';
+    this.desfazerEl.onclick = () => this.acoes.desfazer();
+    this.cenarioEl.hidden = true;
     raiz.append(
+      this.menuEl,
       marca,
       bloco('Caixa', this.dinheiroEl),
       bloco('Trimestre', this.triEl),
@@ -111,7 +122,9 @@ export class Hud {
       this.progressoEl,
       this.sandboxEl,
       this.eventosEl,
+      this.cenarioEl,
       el('div', 'espaco'),
+      this.desfazerEl,
       this.dataEl,
       this.horaEl,
       vel,
@@ -162,6 +175,12 @@ export class Hud {
     this.dataEl.textContent = formatarData(e.tick);
     this.horaEl.textContent = formatarHora(e.tick);
     this.sandboxEl.hidden = !e.sandbox;
+    this.desfazerEl.disabled = e.podeDesfazer === 0;
+    this.cenarioEl.hidden = !e.cenario;
+    if (e.cenario) {
+      this.cenarioEl.textContent = e.cenario.concluido ? `✓ ${e.cenario.nome}` : `◎ ${e.cenario.progresso}`;
+      this.cenarioEl.title = `${e.cenario.nome}: ${e.cenario.objetivo}`;
+    }
     this.eventosEl.hidden = !e.sandbox;
     this.eventosLigados = e.eventosLigados;
     this.eventosEl.textContent = e.eventosLigados ? 'Eventos ✓' : 'Eventos ✗';

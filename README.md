@@ -7,7 +7,7 @@ Stack: TypeScript + PixiJS + Vite.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173  (sandbox: http://localhost:5173/?sandbox=1)
+npm run dev          # http://localhost:5173  (menu inicial; sandbox direto: ?sandbox=1)
 npm test             # testes da simulação
 npm run typecheck
 npm run sim          # cenários headless: 2.000 pessoas (hora a hora) e 2 anos de carreira
@@ -19,7 +19,8 @@ npm run data         # regenera src/data/unidades.json a partir de docs/dados/un
 botão direito/meio ou esquerdo sem ferramenta move a câmera · roda/`+`/`-` = zoom ·
 setas movem a câmera · `Espaço` pausa · `1`–`4` = 1×/2×/4×/8× ·
 `P` piso · `L` lobby · `E` escavação · `O` escritório · `A` apartamento · `V` elevador ·
-`T` escada · `X` demolir · `Esc` cancela.
+`T` escada · `X` demolir · `Esc` cancela · `Ctrl+Z` desfaz · `C` camadas · `R` relatórios ·
+`M` menu (salvar/carregar/exportar) · `?` atalhos.
 
 Elevador: escolha a ferramenta e **arraste na vertical** para definir os andares.
 Clique (sem ferramenta) num poço ou unidade para abrir o inspetor: lá se
@@ -69,7 +70,7 @@ src/
 | 3 | Inquilinos e economia | ✅ |
 | 4 | Progressão e infraestrutura (MVP) | ✅ |
 | 5 | Eventos | ✅ |
-| 6 | UX moderna: overlays, relatórios, save | — |
+| 6 | UX moderna: overlays, relatórios, save | ✅ |
 | 7 | Arte e áudio finais | — |
 | 8 | Performance e escala | — |
 | 9 | Balanceamento, beta, lançamento | — |

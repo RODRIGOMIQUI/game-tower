@@ -36,6 +36,9 @@ export class Cena {
   private readonly dinamicaC = new Container();
   private readonly alertas = new Graphics();
   private readonly fogos = new Graphics();
+  private readonly camadaG = new Graphics();
+  private readonly foraDoLote = new Graphics();
+  private loteAtual = '';
   private readonly dinamica: CamadaDinamica;
   private chaveAlertas = '';
   private mundoAtual: Mundo | null = null;
@@ -45,7 +48,7 @@ export class Cena {
   private chaveCeu = '';
 
   constructor(private readonly app: Application) {
-    this.mundoBase.addChild(this.terreno, this.estrutura, this.unidades, this.dinamicaC, this.alertas, this.rotulos);
+    this.mundoBase.addChild(this.terreno, this.foraDoLote, this.estrutura, this.unidades, this.camadaG, this.dinamicaC, this.alertas, this.rotulos);
     this.dinamica = new CamadaDinamica(this.dinamicaC);
     this.mundoTopo.addChild(this.grade, this.fantasma);
     app.stage.addChild(this.ceu, this.fogos, this.mundoBase, this.noite, this.mundoTopo);
@@ -179,15 +182,84 @@ export class Cena {
     this.redesenharUnidades();
   }
 
-  /** Recebe [uid, situação, satisfação, avisos] por unidade e redesenha se mudou. */
+  /** Recebe [uid, situação, satisfação, avisos, ruído, estresse] por unidade e redesenha se mudou. */
   atualizarSituacoes(resumo: Float32Array, versao: number): void {
     if (versao === this.versaoSituacoes) return;
     this.versaoSituacoes = versao;
     this.situacoes.clear();
-    for (let i = 0; i < resumo.length; i += 4) {
-      this.situacoes.set(resumo[i]!, { situacao: resumo[i + 1]!, satisfacao: resumo[i + 2]!, avisos: resumo[i + 3]! });
+    for (let i = 0; i < resumo.length; i += 6) {
+      this.situacoes.set(resumo[i]!, {
+        situacao: resumo[i + 1]!,
+        satisfacao: resumo[i + 2]!,
+        avisos: resumo[i + 3]!,
+        ruido: resumo[i + 4]!,
+        estresse: resumo[i + 5]!,
+      });
     }
     this.redesenharUnidades();
+  }
+
+  /** Cenários com terreno menor: escurece o que fica fora do lote. */
+  definirLote(lote: [number, number] | undefined): void {
+    const chave = lote ? lote.join(':') : '';
+    if (chave === this.loteAtual) return;
+    this.loteAtual = chave;
+    const g = this.foraDoLote.clear();
+    if (!lote) return;
+    const [a, b] = lote;
+    const cor = { color: 0x0a0c20, alpha: 0.45 };
+    g.rect(0, TOPO_PX, a * COL_PX, FUNDO_PX - TOPO_PX).fill(cor);
+    g.rect((b + 1) * COL_PX, TOPO_PX, (LARGURA - b - 1) * COL_PX, FUNDO_PX - TOPO_PX).fill(cor);
+    for (const x of [a * COL_PX, (b + 1) * COL_PX]) g.rect(x - 1, TOPO_PX, 2, FUNDO_PX - TOPO_PX).fill({ color: COR.atencao, alpha: 0.6 });
+  }
+
+  // ------------------------------------------------------------- camadas
+
+  /** Camada de diagnóstico ativa (tecla O). Ver docs/gdd.md §11. */
+  camada: Camada = 'nenhuma';
+  private esperas = new Map<number, number>();
+
+  atualizarEsperas(pocos: { uid: number; esperaMedia: number }[]): void {
+    this.esperas = new Map(pocos.map((p) => [p.uid, p.esperaMedia]));
+  }
+
+  /** Redesenha a camada (chamado a cada quadro; é barato). */
+  desenharCamada(): void {
+    const g = this.camadaG.clear();
+    const m = this.mundoAtual;
+    if (this.camada === 'nenhuma' || !m) return;
+    if (this.camada === 'trafego') {
+      // Densidade de pessoas visíveis em blocos de 6 colunas por andar.
+      const contagem = new Map<string, number>();
+      for (const [x, y] of this.dinamica.posicoes()) {
+        const k = `${Math.floor(x / 6)}:${Math.round(y)}`;
+        contagem.set(k, (contagem.get(k) ?? 0) + 1);
+      }
+      for (const [k, n] of contagem) {
+        const [bx, y] = k.split(':').map(Number) as [number, number];
+        intensidade(g, bx * 6 * COL_PX, topoDoAndar(y), 6 * COL_PX, INTERIOR_PX, Math.min(1, n / 8));
+      }
+      return;
+    }
+    for (const u of m.unidades.values()) {
+      const r = retanguloUnidade(u);
+      if (this.camada === 'espera') {
+        const e = this.esperas.get(u.uid);
+        if (e !== undefined) intensidade(g, r.x, topoDoAndar(u.y + u.altura - 1), r.w, u.altura * ANDAR_PX, Math.min(1, e / 60));
+        continue;
+      }
+      const s = this.situacoes.get(u.uid);
+      if (!s) continue;
+      if (this.camada === 'ocupacao') {
+        const cor = s.situacao === 0 ? COR.vago : s.situacao === 3 || s.situacao === 4 ? COR.sujo : COR.valido;
+        g.rect(r.x, r.y, r.w, r.h).fill({ color: cor, alpha: 0.6 });
+        continue;
+      }
+      if (s.situacao === 0) continue; // vaga: sem dado
+      const t =
+        this.camada === 'estresse' ? s.estresse / 100 : this.camada === 'ruido' ? s.ruido / 40 : 1 - s.satisfacao / 100;
+      intensidade(g, r.x, r.y, r.w, r.h, Math.max(0, Math.min(1, t)));
+    }
   }
 
   private redesenharUnidades(): void {
@@ -306,10 +378,22 @@ function retanguloUnidade(u: { x: number; y: number; largura: number; altura: nu
 }
 
 interface Situacao {
-  /** 0 vaga, 1 ocupada, 2 hospedada, 3 suja (ver CODIGO_SITUACAO). */
+  /** 0 vaga, 1 ocupada, 2 hospedada, 3 suja, 4 infestada (ver CODIGO_SITUACAO). */
   situacao: number;
   satisfacao: number;
   avisos: number;
+  ruido: number;
+  estresse: number;
+}
+
+export type Camada = 'nenhuma' | 'estresse' | 'satisfacao' | 'ruido' | 'ocupacao' | 'espera' | 'trafego';
+
+/**
+ * Escala sequencial de um só tom (problema): quase transparente = pouco,
+ * vermelho-alaranjado intenso = muito.
+ */
+function intensidade(g: Graphics, x: number, y: number, w: number, h: number, t: number): void {
+  g.rect(x, y, w, h).fill({ color: misturar(0xffd27a, 0xe0393e, t), alpha: 0.15 + 0.65 * t });
 }
 
 function desenharUnidade(g: Graphics, u: Unidade, s: Situacao | undefined): void {

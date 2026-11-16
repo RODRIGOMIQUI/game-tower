@@ -304,30 +304,44 @@ unidade de vínculo, o que está fazendo, estresse e os últimos acontecimentos
 
 ## 11. Interface
 
-- **Barra superior:** dinheiro, população, estrela + progresso, data/hora,
+- **Barra superior:** menu (☰), caixa, receita do trimestre, população, pessoas
+  esperando, estrelas + progresso, objetivo do cenário, desfazer (↶), data/hora,
   velocidade.
 - **Paleta de construção** (esquerda): categorias com ícones; bloqueados
   mostram o requisito.
-- **Inspetor** (direita): ficha da unidade/poço/pessoa selecionada.
-- **Overlays** (tecla `O`): estresse, tempo de espera por poço, tráfego,
-  ruído, satisfação, ocupação, sem acesso.
-- **Relatórios** (tecla `R`): gráficos de receita, população, satisfação e
-  espera por trimestre.
-- **Qualidade de vida:** arrastar para construir em linha, desfazer
-  (`Ctrl+Z`) até 50 ações, autosave a cada trimestre, atalhos de teclado,
-  tutorial guiado no início da carreira.
+- **Inspetor** (direita): ficha da unidade, do poço ou da pessoa selecionada.
+- **Camadas** (tecla `C`): estresse, insatisfação, ruído, ocupação, espera por
+  poço e tráfego de pessoas. Escala de um só tom: quase transparente = pouco,
+  vermelho intenso = muito (ocupação usa verde/cinza/marrom).
+- **Relatórios** (tecla `R`): gráficos dia a dia (caixa, receitas e despesas,
+  população, satisfação média, espera média, desistências), com cursor e dica
+  ao passar o mouse e uma visão em tabela. Guarda os últimos 512 dias.
+- **Menu** (tecla `M`): salvar em 3 espaços, carregar, exportar/importar
+  arquivo `.gametower`, relatórios, atalhos, novo jogo. O jogo pausa com o menu
+  aberto.
+- **Salvamento automático** a cada fechamento de trimestre. O save guarda o
+  estado completo; um jogo carregado continua idêntico ao original.
+- **Desfazer** (`Ctrl+Z`): até 50 construções/demolições. Desfazer construção
+  devolve o valor integral; desfazer demolição reconstrói a unidade (vaga) e
+  cobra de volta o reembolso.
+- **Atalhos** (tecla `?`) e **tutorial guiado** no começo da primeira carreira
+  (7 passos que avançam sozinhos; dá para pular).
 
 ---
 
 ## 12. Modos de jogo
 
 1. **Carreira:** ★1 até Lendária, com eventos e falência.
-2. **Sandbox:** dinheiro infinito opcional, tudo desbloqueado, eventos
-   configuráveis.
-3. **Cenários:** mapas com objetivo e restrições (pós-MVP):
-   - *Lote estreito* — terreno de 60 colunas.
-   - *Quatro poços* — no máximo 4 elevadores.
-   - *Hotel de luxo* — atingir 300 hóspedes com satisfação ≥ 80.
+2. **Sandbox:** $1 bilhão, tudo desbloqueado, eventos podem ser desligados.
+3. **Cenários:** restrições e um objetivo, avaliado às 23h:
+
+| Cenário | Restrição | Objetivo |
+|---|---|---|
+| Lote estreito | terreno de 60 colunas | 1.500 pessoas |
+| Quatro poços | no máximo 4 poços de elevador | 2.000 pessoas |
+| Hotel de luxo | começa com 3★ e $5 milhões | 300 hóspedes numa noite com satisfação média do hotel ≥ 80 |
+
+Concluir o cenário não encerra a partida.
 
 ---
 
@@ -340,7 +354,7 @@ despacho coletivo e pico da manhã, economia, save/load.
 **1.0:** + eventos, overlays completos, relatórios, despacho por destino,
 sandbox, arte/áudio finais, 12k+ agentes a 60 fps.
 
-**Pós-1.0:** cenários, mods via JSON, conquistas, clima, desastres extras.
+**Pós-1.0:** mais cenários, mods via JSON, conquistas, clima, desastres extras.
 
 **Fora de escopo:** multiplayer, 3D, mobile (reavaliar depois).
 

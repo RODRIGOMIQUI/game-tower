@@ -18,6 +18,10 @@ export interface Contexto {
   estrela: number;
   /** Modo sandbox: ignora requisito de estrela. */
   ignorarEstrela?: boolean;
+  /** Cenário: colunas permitidas. */
+  lote?: [number, number];
+  /** Cenário: quantos poços de elevador ainda podem ser construídos. */
+  pocosRestantes?: number;
 }
 
 export interface ItemPlano {
@@ -80,9 +84,26 @@ export function planejarConstrucao(
   if (t.estrela > ctx.estrela && !ctx.ignorarEstrela) {
     return fecharPlano('construir', [], `Requer ${t.estrela}★`);
   }
-  if (ehEstrutura(tipoId)) return planejarEstrutura(m, t, x0, y0, x1, y1, ctx);
-  if (ehElevador(tipoId)) return planejarElevador(m, t, x0, y0, y1, ctx);
-  return planejarUnidades(m, t, x0, y0, x1, y1, ctx);
+  if (ehElevador(tipoId) && ctx.pocosRestantes !== undefined && ctx.pocosRestantes <= 0) {
+    return fecharPlano('construir', [], 'Limite de poços do cenário');
+  }
+  const plano = ehEstrutura(tipoId)
+    ? planejarEstrutura(m, t, x0, y0, x1, y1, ctx)
+    : ehElevador(tipoId)
+      ? planejarElevador(m, t, x0, y0, y1, ctx)
+      : planejarUnidades(m, t, x0, y0, x1, y1, ctx);
+  return ctx.lote ? restringirAoLote(plano, ctx.lote) : plano;
+}
+
+/** Cenários com terreno menor: itens fora das colunas permitidas ficam inválidos. */
+function restringirAoLote(p: Plano, [a, b]: [number, number]): Plano {
+  for (const it of p.itens) {
+    if (it.ok && (it.x < a || it.x + it.largura - 1 > b)) {
+      it.ok = false;
+      it.motivo = 'Fora do lote';
+    }
+  }
+  return fecharPlano(p.acao, p.itens);
 }
 
 /**
@@ -353,4 +374,60 @@ export function executarPlano(m: Mundo, plano: Plano): void {
     } else if (it.uid) m.removerUnidade(it.uid);
     else m.setEst(it.x, it.y, Est.Vazio);
   }
+}
+
+// ------------------------------------------------------------------ desfazer
+
+/**
+ * Desfaz uma construção: remove as unidades criadas (`uids`) e as células de
+ * estrutura do plano. Só aplica se tudo puder sair; senão devolve o motivo.
+ */
+export function desfazerConstrucao(m: Mundo, itens: ItemPlano[], uids: number[]): string | undefined {
+  const celulas = itens.filter((i) => i.estrutura);
+  const removidas = new Set(celulas.map((c) => idx(c.x, c.y)));
+  const unidades = new Set(uids.filter((u) => m.unidades.has(u)));
+  for (const c of celulas) {
+    const uid = m.uidEm(c.x, c.y);
+    if (uid && !unidades.has(uid)) return 'Há outra coisa construída ali; desfaça ou demola antes';
+    const dep = c.y >= 0 ? c.y + 1 : c.y - 1;
+    if (m.est(c.x, dep) !== Est.Vazio && !removidas.has(idx(c.x, dep))) {
+      return 'Algo foi construído em cima; desfaça ou demola antes';
+    }
+  }
+  for (const uid of unidades) m.removerUnidade(uid);
+  for (const c of celulas) m.setEst(c.x, c.y, Est.Vazio);
+  return undefined;
+}
+
+/**
+ * Desfaz uma demolição: reconstrói estrutura e unidades (vagas) nos mesmos
+ * lugares. As unidades voltam com uid novo: devolve o mapa uid antigo → novo.
+ */
+export function desfazerDemolicao(m: Mundo, itens: ItemPlano[]): { motivo?: string; uids: Map<number, number> } {
+  const uids = new Map<number, number>();
+  const celulas = itens.filter((i) => i.estrutura).sort((a, b) => distanciaDoChao(a.y) - distanciaDoChao(b.y));
+  const unidades = itens.filter((i) => !i.estrutura);
+  // Checagem antes de mudar qualquer coisa.
+  const novas = new Set<number>();
+  for (const c of celulas) {
+    if (m.est(c.x, c.y) !== Est.Vazio || m.uidEm(c.x, c.y)) return { motivo: 'O espaço já foi usado; demola o que está lá antes', uids };
+    const apoio = c.y >= 0 ? c.y - 1 : c.y + 1;
+    const temApoio = c.y === 0 || c.y === -1 || m.est(c.x, apoio) !== Est.Vazio || novas.has(idx(c.x, apoio));
+    if (!temApoio) return { motivo: 'Sem apoio para reconstruir', uids };
+    novas.add(idx(c.x, c.y));
+  }
+  for (const u of unidades) {
+    for (let y = u.y; y < u.y + u.altura; y++) {
+      for (let x = u.x; x < u.x + u.largura; x++) {
+        if (m.uidEm(x, y)) return { motivo: 'O espaço já foi usado; demola o que está lá antes', uids };
+        if (m.est(x, y) === Est.Vazio && !novas.has(idx(x, y))) return { motivo: 'Sem piso para reconstruir', uids };
+      }
+    }
+  }
+  for (const c of celulas) m.setEst(c.x, c.y, ESTRUTURA_POR_TIPO[c.tipo]!);
+  for (const u of unidades) {
+    const nova = m.adicionarUnidade(u.tipo, u.x, u.y, u.largura, u.altura);
+    if (u.uid) uids.set(u.uid, nova.uid);
+  }
+  return { uids };
 }

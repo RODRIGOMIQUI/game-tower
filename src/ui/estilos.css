@@ -1,5 +1,7 @@
 /* Interface: flat, vidro escuro, separada da pixel art do mundo (direcao-de-arte.md §6). */
 :root {
+  --serie-1: #3987e5;
+  --serie-2: #d95926;
   --vidro: rgba(30, 33, 41, 0.92);
   --vidro-claro: rgba(52, 57, 70, 0.95);
   --borda: rgba(255, 255, 255, 0.08);
@@ -189,3 +191,68 @@ html, body {
   #status { left: 186px; }
   #status .dica { display: none; }
 }
+
+/* ---- menu ---- */
+#menu {
+  position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+  background: rgba(10, 12, 32, 0.6);
+}
+#menu[hidden] { display: none; }
+.menu-caixa { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px 20px; }
+.menu-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.menu-topo h2 { margin: 0; font-size: 18px; }
+.menu-conteudo { display: flex; flex-direction: column; gap: 6px; }
+.menu-marca { font-size: 34px; font-weight: 700; letter-spacing: 0.01em; }
+.menu-marca span { color: var(--destaque); }
+.menu-botao { text-align: left; padding: 9px 12px; width: 100%; }
+.menu-botao.principal { border-color: var(--destaque); color: var(--destaque); }
+.cartao-cenario {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px;
+  font: inherit; color: var(--texto); background: transparent; border: 1px solid var(--borda); border-radius: 8px; cursor: pointer;
+}
+.cartao-cenario:hover { background: var(--vidro-claro); }
+.cartao-cenario span { color: var(--texto-fraco); }
+.cartao-cenario em { font-style: normal; color: var(--destaque); font-size: 12px; }
+.tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tabela th, .tabela td { padding: 4px 6px; border-bottom: 1px solid var(--borda); text-align: right; font-variant-numeric: tabular-nums; }
+.tabela th:first-child, .tabela td:first-child { text-align: left; }
+.tabela.atalhos td { text-align: left; }
+.tabela.atalhos td:first-child { font-family: var(--mono); color: var(--destaque); white-space: nowrap; }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--borda); border-radius: 3px; padding: 0 4px; background: var(--vidro-claro); }
+
+/* ---- relatórios ---- */
+#relatorios { position: fixed; inset: 56px 8px 44px 226px; z-index: 15; overflow-y: auto; }
+#relatorios[hidden] { display: none; }
+.relatorios-caixa { padding: 14px 16px; }
+.grade-graficos { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.grafico { margin: 0; }
+.grafico figcaption { display: flex; justify-content: space-between; font-size: 12px; color: var(--texto-fraco); margin-bottom: 4px; }
+.grafico figcaption b { color: var(--texto); font-family: var(--mono); font-weight: 500; }
+.legenda { display: flex; gap: 12px; font-size: 11px; color: var(--texto-fraco); margin-bottom: 4px; }
+.legenda i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+.area-grafico { position: relative; }
+.area-grafico svg { width: 100%; height: auto; display: block; }
+.area-grafico .eixo { stroke: rgba(255,255,255,0.25); stroke-width: 1; }
+.area-grafico .grade { stroke: rgba(255,255,255,0.08); stroke-width: 1; stroke-dasharray: 3 3; }
+.area-grafico .rot { fill: var(--texto-fraco); font-size: 9px; font-family: var(--mono); }
+.area-grafico .cursor { stroke: rgba(255,255,255,0.45); stroke-width: 1; }
+.area-grafico .marca { stroke: #1e2129; stroke-width: 2; }
+.dica {
+  position: absolute; top: 0; transform: translateX(-50%); pointer-events: none;
+  background: #2a2e38; border: 1px solid var(--borda); border-radius: 6px; padding: 4px 8px; font-size: 11px; white-space: nowrap;
+}
+.dica .dia { color: var(--texto-fraco); }
+.dica b { font-family: var(--mono); font-weight: 600; }
+.tabela-rolagem { max-height: 60vh; overflow-y: auto; }
+
+/* ---- tutorial e camada ---- */
+#tutorial { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); padding: 10px 14px; z-index: 5; }
+#tutorial[hidden] { display: none; }
+#tutorial p { margin: 4px 0 8px; }
+.tut-passo { font-size: 11px; color: var(--destaque); text-transform: uppercase; letter-spacing: 0.06em; }
+#camada { position: fixed; left: 226px; bottom: 48px; padding: 6px 10px; font-size: 12px; z-index: 4; }
+#camada[hidden] { display: none; }
+#camada .escala { display: inline-block; width: 80px; height: 8px; border-radius: 4px; vertical-align: middle; margin: 0 6px;
+  background: linear-gradient(90deg, rgba(255,210,122,0.2), rgba(224,57,62,0.85)); }
+#hud .acao-hud { padding: 3px 8px; }
+#hud .cenario-chip { font-size: 12px; color: var(--destaque); cursor: help; }

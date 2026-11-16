@@ -68,6 +68,17 @@ export interface ContextoEventos {
   creditar(valor: number): void;
 }
 
+export interface EventosSalvos {
+  ligado: boolean;
+  focos: [number, number][];
+  queimadas: number[];
+  brigadaChega: number | null;
+  bombeirosChegam: number;
+  festival: boolean;
+  achadoFeito: boolean;
+  panes: [number, number][];
+}
+
 export class Eventos {
   ligado = true;
   /** Unidades em chamas → tick em que pegaram fogo. */
@@ -79,6 +90,26 @@ export class Eventos {
   achadoFeito = false;
   /** Carros em pane: id do carro → uid do poço. */
   private readonly panes = new Map<number, number>();
+
+  exportar(): EventosSalvos {
+    return {
+      ligado: this.ligado, focos: [...this.focos], queimadas: [...this.queimadas], brigadaChega: this.brigadaChega,
+      bombeirosChegam: this.bombeirosChegam, festival: this.festival, achadoFeito: this.achadoFeito, panes: [...this.panes],
+    };
+  }
+
+  importar(d: EventosSalvos): void {
+    this.ligado = d.ligado;
+    this.focos.clear();
+    for (const [k, v] of d.focos) this.focos.set(k, v);
+    this.queimadas = new Set(d.queimadas);
+    this.brigadaChega = d.brigadaChega;
+    this.bombeirosChegam = d.bombeirosChegam;
+    this.festival = d.festival;
+    this.achadoFeito = d.achadoFeito;
+    this.panes.clear();
+    for (const [k, v] of d.panes) this.panes.set(k, v);
+  }
 
   get emChamas(): boolean {
     return this.focos.size > 0;
