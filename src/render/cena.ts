@@ -63,7 +63,8 @@ export class Cena {
       this.terreno, this.foraDoLote, this.estrutura, this.sprites, this.unidades, this.marcadores,
       this.camadaG, this.dinamicaC, this.alertas, this.rotulos,
     );
-    this.dinamica = new CamadaDinamica(this.dinamicaC);
+    this.dinamica = new CamadaDinamica(this.dinamicaC, app.renderer);
+    this.sprites.cullableChildren = true;
     // O brilho fica acima da camada de noite: janelas acesas não escurecem.
     this.mundoTopo.addChild(this.brilho, this.grade, this.fantasma);
     this.fundo = new Fundo(app.renderer);
@@ -212,7 +213,7 @@ export class Cena {
         estresse: resumo[i + 5]!,
       });
     }
-    this.redesenharUnidades();
+    this.redesenharUnidades(false);
   }
 
   /** Cenários com terreno menor: escurece o que fica fora do lote. */
@@ -278,25 +279,48 @@ export class Cena {
     }
   }
 
-  private redesenharUnidades(): void {
+  /** Sprite de cada unidade (por uid) e a variante que ele mostra. */
+  private readonly spritesPorUid = new Map<number, { sprite: Sprite; variante: Variante; uid: number }>();
+
+  /**
+   * Prédio mudou: sincroniza sprites (cria/remove só o necessário) e redesenha
+   * poços e escadas. Situação mudou: só troca a textura de quem mudou.
+   */
+  private redesenharUnidades(mundoMudou = true): void {
     const m = this.mundoAtual;
-    const gu = this.unidades.clear();
-    const gm = this.marcadores.clear();
-    for (const s of this.sprites.removeChildren()) s.destroy();
     if (!m) return;
-    for (const u of m.unidades.values()) {
-      if (ehElevador(u.tipo)) desenharPoco(gu, u);
-      else if (ehEscada(u.tipo)) desenharEscada(gu, u);
-      else {
-        const s = this.situacoes.get(u.uid);
-        const variante: Variante =
-          s?.situacao === 0 ? 'vaga' : s?.situacao === 3 ? 'suja' : s?.situacao === 4 ? 'pragas' : 'normal';
-        const r = retanguloUnidade(u);
-        const sp = new Sprite(this.arte.unidade(u.tipo, u.largura, u.altura, variante, u.uid));
-        sp.position.set(r.x, r.y);
-        this.sprites.addChild(sp);
-        desenharMarcador(gm, u, s);
+    if (mundoMudou) {
+      const gu = this.unidades.clear();
+      for (const [uid, reg] of this.spritesPorUid) {
+        if (m.unidades.has(uid)) continue;
+        reg.sprite.destroy();
+        this.spritesPorUid.delete(uid);
       }
+      for (const u of m.unidades.values()) {
+        if (ehElevador(u.tipo)) desenharPoco(gu, u);
+        else if (ehEscada(u.tipo)) desenharEscada(gu, u);
+      }
+    }
+    const gm = this.marcadores.clear();
+    for (const u of m.unidades.values()) {
+      if (ehElevador(u.tipo) || ehEscada(u.tipo)) continue;
+      const s = this.situacoes.get(u.uid);
+      const variante: Variante =
+        s?.situacao === 0 ? 'vaga' : s?.situacao === 3 ? 'suja' : s?.situacao === 4 ? 'pragas' : 'normal';
+      let reg = this.spritesPorUid.get(u.uid);
+      if (!reg) {
+        const r = retanguloUnidade(u);
+        const sprite = new Sprite(this.arte.unidade(u.tipo, u.largura, u.altura, variante, u.uid));
+        sprite.position.set(r.x, r.y);
+        sprite.cullable = true;
+        this.sprites.addChild(sprite);
+        reg = { sprite, variante, uid: u.uid };
+        this.spritesPorUid.set(u.uid, reg);
+      } else if (reg.variante !== variante) {
+        reg.sprite.texture = this.arte.unidade(u.tipo, u.largura, u.altura, variante, u.uid);
+        reg.variante = variante;
+      }
+      if (s && (s.avisos > 0 || s.satisfacao < 40) && s.situacao !== 0) desenharMarcador(gm, u, s);
     }
     this.redesenharBrilho();
   }
@@ -364,10 +388,22 @@ export class Cena {
   desenharDinamica(agora: number, m: Mundo): void {
     // Céu e noite acompanham redimensionamentos mesmo com o jogo pausado (sai cedo se nada mudou).
     this.atualizarCeu(this.minutoAtual);
-    this.dinamica.desenhar(agora, m, this.camera.escala);
+    this.dinamica.desenhar(agora, m, this.camera.escala, this.areaVisivel());
     this.fundo.atualizar(
       this.minutoAtual, agora, this.larguraTela, this.alturaTela, this.camera.oy, this.camera.ox, this.camera.escala,
     );
+  }
+
+  /** Retângulo do mundo (px de mundo) que está na tela, com uma margem. */
+  areaVisivel(): { x0: number; y0: number; x1: number; y1: number } {
+    const { ox, oy, escala } = this.camera;
+    const m = 40;
+    return {
+      x0: (-ox - m) / escala,
+      y0: (-oy - m) / escala,
+      x1: (this.larguraTela - ox + m) / escala,
+      y1: (this.alturaTela - oy + m) / escala,
+    };
   }
 
   /** Posição interpolada de uma pessoa visível, em (coluna, andar). */

@@ -1,6 +1,9 @@
 // Ponto de entrada: liga Worker da simulação, render (PixiJS) e HUD (DOM).
 import './ui/estilos.css';
-import { Application } from 'pixi.js';
+import { Application, CullerPlugin, extensions } from 'pixi.js';
+
+// Não desenha o que está fora da tela (sprites marcados como `cullable`).
+extensions.add(CullerPlugin);
 import { Cena } from './render/cena';
 import { planejarConstrucao, planejarDemolicao, type Plano } from './sim/construcao';
 import { tipo } from './sim/dados';
@@ -65,6 +68,16 @@ document.addEventListener('click', (e) => {
 // Ambiente adaptativo: murmúrio, rua, vento e música de dia/noite.
 setInterval(() => som.ambiente(cena.pessoasVisiveis, cena.andarNoCentro, cena.escuridaoAtual > 0.5), 500);
 let ultimoFogo = 0;
+// Painel de desempenho (tecla F): quadros por segundo, ritmo da simulação e pessoas na tela.
+setInterval(() => {
+  const d = document.getElementById('desempenho')!;
+  if (d.hidden || !estado) return;
+  const alvo = estado.velocidade * 6;
+  d.textContent =
+    `${app.ticker.FPS.toFixed(0)} fps\n` +
+    `simulação ${estado.ticksPorSegundo.toFixed(0)} / ${alvo} min/s\n` +
+    `${cena.pessoasVisiveis} pessoas na tela · ${estado.populacao} no total`;
+}, 500);
 
 const hud = new Hud({
   velocidade: (v) => mudarVelocidade(v),
@@ -561,6 +574,12 @@ window.addEventListener('keydown', (e) => {
   if (k === 'm') return abrirMenuJogo();
   if (k === 'r') return enviar({ tipo: 'relatorio' });
   if (k === 'c') return trocarCamada();
+  if (k === 'f') {
+    const d = document.getElementById('desempenho')!;
+    d.hidden = !d.hidden;
+    d.className = 'painel';
+    return;
+  }
   if (e.key === '?') {
     abrirMenuJogo();
     menu.abrirAtalhos();

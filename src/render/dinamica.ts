@@ -1,13 +1,97 @@
 // Camada dinâmica: pessoas e carros de elevador, redesenhados a cada quadro.
 // A simulação publica ~20×/s; aqui interpolamos entre as duas últimas
 // mensagens para o movimento ficar suave em qualquer velocidade.
-import { Graphics, type Container } from 'pixi.js';
+import { Graphics, Particle, ParticleContainer, Rectangle, Texture, type Container, type Renderer } from 'pixi.js';
 import type { Mundo } from '../sim/mundo';
 import type { Dinamico } from '../worker/protocolo';
 import { ANDAR_PX, COL_PX, LAJE_PX, topoDoAndar } from './camera';
 import { COR } from './paleta';
 
 const INTERIOR_PX = ANDAR_PX - LAJE_PX;
+/** Célula de cada pessoa na folha de texturas (inclui espaço do balão). */
+const CEL_L = 8;
+const CEL_A = 24;
+
+interface AtlasPessoas {
+  base: Texture;
+  /** roupa × pele × quadro(3) × balão(3) */
+  corpo: Texture[];
+  /** pele × quadro (VIP, roupa dourada e coroa) */
+  vip: Texture[];
+  /** silhueta simples para zoom afastado, por roupa */
+  lod: Texture[];
+}
+
+function indiceCorpo(roupa: number, pele: number, quadro: number, balao: number): number {
+  return ((roupa * PELES.length + pele) * 3 + quadro) * 3 + balao;
+}
+
+/**
+ * Gera uma única textura com todas as variações de pessoa (para desenhar em
+ * lote). Cada célula tem 8×24 px: balão no topo, corpo embaixo, pés na base.
+ */
+function gerarAtlas(renderer: Renderer): AtlasPessoas {
+  const g = new Graphics();
+  const celulas: [number, number][] = [];
+  const colunas = 32;
+  let n = 0;
+  const proxima = (): [number, number] => {
+    const c: [number, number] = [(n % colunas) * CEL_L, Math.floor(n / colunas) * CEL_A];
+    n++;
+    celulas.push(c);
+    return c;
+  };
+  const r = (x: number, y: number, w: number, h: number, cor: number) => g.rect(x, y, w, h).fill(cor);
+  const corpo = (ox: number, oy: number, roupa: number, pele: number, calca: number, cabelo: number, quadro: number, balao: number, vip: boolean) => {
+    const px = ox + 1;
+    const base = oy + CEL_A;
+    // pernas: parado (0) ou passo A/B (1/2)
+    r(px + (quadro === 1 ? 0 : 1), base - 4, 1, 4, calca);
+    r(px + (quadro === 2 ? 4 : 3), base - 4, 1, 4, calca);
+    r(px + 1, base - 5, 3, 1, calca);
+    r(px, base - 10, 5, 5, roupa);
+    r(px + 1, base - 13, 3, 3, pele);
+    r(px + 1, base - 14, 3, 1, cabelo);
+    if (vip) r(px + 1, base - 16, 3, 2, COR.vip);
+    if (balao) {
+      const cor = balao === 2 ? COR.humorFurioso : COR.humorIrritado;
+      r(ox, oy, CEL_L - 1, 6, cor);
+      r(ox + 3, oy + 6, 1, 1, cor);
+      if (balao === 2) {
+        r(ox + 2, oy + 1, 1, 3, 0xffffff);
+        r(ox + 4, oy + 1, 1, 3, 0xffffff);
+      } else r(ox + 3, oy + 1, 1, 3, 0xffffff);
+    }
+  };
+  const idsCorpo: number[] = [];
+  for (let ro = 0; ro < ROUPAS.length; ro++) for (let pe = 0; pe < PELES.length; pe++) for (let q = 0; q < 3; q++) for (let b = 0; b < 3; b++) {
+    const [ox, oy] = proxima();
+    corpo(ox, oy, ROUPAS[ro]!, PELES[pe]!, CALCAS[(ro * 3 + pe) % CALCAS.length]!, CABELOS[(ro + pe) % CABELOS.length]!, q, b, false);
+    idsCorpo.push(n - 1);
+  }
+  const idsVip: number[] = [];
+  for (let pe = 0; pe < PELES.length; pe++) for (let q = 0; q < 3; q++) {
+    const [ox, oy] = proxima();
+    corpo(ox, oy, COR.vip, PELES[pe]!, CALCAS[0]!, CABELOS[pe % CABELOS.length]!, q, 0, true);
+    idsVip.push(n - 1);
+  }
+  const idsLod: number[] = [];
+  for (let ro = 0; ro < ROUPAS.length; ro++) {
+    const [ox, oy] = proxima();
+    r(ox + 2, oy + CEL_A - 10, 4, 10, ROUPAS[ro]!);
+    idsLod.push(n - 1);
+  }
+  const linhas = Math.ceil(n / colunas);
+  const base = renderer.generateTexture({ target: g, resolution: 1, frame: new Rectangle(0, 0, colunas * CEL_L, linhas * CEL_A) });
+  base.source.scaleMode = 'nearest';
+  g.destroy();
+  const sub = (i: number) => {
+    const [x, y] = celulas[i]!;
+    return new Texture({ source: base.source, frame: new Rectangle(x, y, CEL_L, CEL_A) });
+  };
+  return { base, corpo: idsCorpo.map(sub), vip: idsVip.map(sub), lod: idsLod.map(sub) };
+}
+
 // Variedade das pessoas (roupas, calças, tons de pele, cabelos).
 const ROUPAS = [0x4a78b8, 0xc8483f, 0x5d9a4f, 0xe8c547, 0x8e6bb8, 0xe38a4b, 0x2b2f3a, 0xf4f4f0, 0x3a8a8a, 0xe89ab0];
 const CALCAS = [0x2b2f3a, 0x3b4a6a, 0x5e4630, 0x6e7178];
@@ -29,7 +113,9 @@ interface Quadro {
 
 export class CamadaDinamica {
   private readonly carros = new Graphics();
-  private readonly pessoas = new Graphics();
+  private readonly pessoas: ParticleContainer;
+  private readonly pool: Particle[] = [];
+  private readonly atlas: AtlasPessoas;
   private readonly fogo = new Graphics();
   private focos: number[] = [];
   private anterior: Quadro | null = null;
@@ -39,7 +125,13 @@ export class CamadaDinamica {
   /** Último andar e se estava andando, por carro (para o "ding" ao parar). */
   private movimento = new Map<number, { pos: number; andando: boolean }>();
 
-  constructor(pai: Container) {
+  constructor(pai: Container, renderer: Renderer) {
+    this.atlas = gerarAtlas(renderer);
+    // Pessoas: milhares de sprites da mesma folha de texturas, desenhados em lote.
+    this.pessoas = new ParticleContainer({
+      dynamicProperties: { position: true, uvs: true, vertex: false, rotation: false, color: false },
+      texture: this.atlas.base,
+    });
     pai.addChild(this.carros, this.pessoas, this.fogo);
   }
 
@@ -127,10 +219,13 @@ export class CamadaDinamica {
     return melhor;
   }
 
-  desenhar(agora: number, mundo: Mundo, escala: number): void {
+  /**
+   * `visivel`: retângulo do mundo na tela (px de mundo), para não desenhar o
+   * que está fora dela.
+   */
+  desenhar(agora: number, mundo: Mundo, escala: number, visivel: { x0: number; y0: number; x1: number; y1: number }): void {
     const q = this.atual;
     const gc = this.carros.clear();
-    const gp = this.pessoas.clear();
     if (!q) return;
     const a = this.anterior;
     const intervalo = a ? Math.max(1, q.t - a.t) : 1;
@@ -152,6 +247,7 @@ export class CamadaDinamica {
       const w = (poco.largura - 1) * COL_PX;
       const y = topoDoAndar(pos) + 2;
       const h = INTERIOR_PX - 2;
+      if (x > visivel.x1 || x + w < visivel.x0 || y > visivel.y1 || y + h < visivel.y0) continue;
       // Cabine: luz interna, cabeças dos passageiros e portas.
       gc.rect(x, y, w, h).fill(0xfff6dc);
       const n = Math.min(Math.round(carga), 12);
@@ -170,10 +266,10 @@ export class CamadaDinamica {
 
     this.desenharFogo(agora, mundo);
 
-    // Pessoas: roupa, pele e cabelo variam por pessoa; pernas alternam ao
-    // andar. O humor aparece como balão acima da cabeça (forma + cor).
+    // Pessoas: um sprite por pessoa visível, tirado da folha de texturas.
     const detalhada = escala >= 1;
     const ps = q.pessoas;
+    let n = 0;
     for (let i = 0; i < ps.length; i += 4) {
       const id = ps[i]!;
       let x = ps[i + 1]!;
@@ -185,37 +281,35 @@ export class CamadaDinamica {
         x = lerp(a.pessoas[j + 1]!, x);
         y = lerp(a.pessoas[j + 2]!, y);
       }
+      const px = Math.round(x * COL_PX - CEL_L / 2);
+      const py = Math.round(topoDoAndar(y) + INTERIOR_PX - CEL_A);
+      if (px > visivel.x1 || px + CEL_L < visivel.x0 || py > visivel.y1 || py + CEL_A < visivel.y0) continue;
       const humor = ps[i + 3]!;
-      const vip = humor === 3;
       const h = mistura(id);
-      const roupa = vip ? COR.vip : ROUPAS[h % ROUPAS.length]!;
-      const calca = CALCAS[(h >> 3) % CALCAS.length]!;
-      const pele = PELES[(h >> 6) % PELES.length]!;
-      const cabelo = CABELOS[(h >> 9) % CABELOS.length]!;
-      const px = Math.round(x * COL_PX - 2.5);
-      const base = Math.round(topoDoAndar(y) + INTERIOR_PX);
-      if (!detalhada) {
-        gp.rect(px, base - 10, 4, 10).fill(roupa);
-        continue;
+      let tex: Texture;
+      if (!detalhada) tex = this.atlas.lod[h % ROUPAS.length]!;
+      else {
+        const quadro = andando ? 1 + (Math.floor(x * 3) % 2) : 0;
+        const bal = humor === 1 || humor === 2 ? humor : 0;
+        tex =
+          humor === 3
+            ? this.atlas.vip[((h >>> 6) % PELES.length) * 3 + quadro]!
+            : this.atlas.corpo[indiceCorpo(h % ROUPAS.length, (h >>> 6) % PELES.length, quadro, bal)]!;
       }
-      const passo = andando ? Math.floor(x * 3) % 2 : 0;
-      gp.rect(px + (passo ? 0 : 1), base - 4, 1, 4).fill(calca); // pernas
-      gp.rect(px + (passo ? 3 : 3), base - 4, 1, 4).fill(calca);
-      gp.rect(px + 1, base - 5, 3, 1).fill(calca);
-      gp.rect(px, base - 10, 5, 5).fill(roupa); // tronco
-      gp.rect(px + 1, base - 13, 3, 3).fill(pele); // cabeça
-      gp.rect(px + 1, base - 14, 3, 1).fill(cabelo);
-      if (vip) gp.rect(px + 1, base - 16, 3, 2).fill(COR.vip); // coroa
-      if (humor === 1 || humor === 2) {
-        // Balão: irritado (rosa, "!") ou furioso (vermelho, "!!")
-        const cor = humor === 2 ? COR.humorFurioso : COR.humorIrritado;
-        const bw = humor === 2 ? 7 : 5;
-        gp.rect(px - (bw - 5) / 2, base - 22, bw, 6).fill(cor);
-        gp.rect(px + 2, base - 16, 1, 1).fill(cor);
-        gp.rect(px + 2 - (humor === 2 ? 1 : 0), base - 21, 1, 3).fill(0xffffff);
-        if (humor === 2) gp.rect(px + 3, base - 21, 1, 3).fill(0xffffff);
+      let p = this.pool[n];
+      if (!p) {
+        p = new Particle({ texture: tex, x: px, y: py });
+        this.pool.push(p);
+        this.pessoas.addParticle(p);
+      } else {
+        p.texture = tex;
+        p.x = px;
+        p.y = py;
       }
+      n++;
     }
+    // Sobras do pool ficam fora da tela.
+    for (let k = n; k < this.pool.length; k++) this.pool[k]!.x = -1e6;
   }
 }
 

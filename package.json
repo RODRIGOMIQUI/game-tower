@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "data": "node tools/csv-para-json.mjs",
     "sim": "vitest run src/sim/cenario.test.ts src/sim/carreira.test.ts --silent=false",
-    "sim:partida": "vitest run src/sim/partida.test.ts --silent=false"
+    "sim:partida": "vitest run src/sim/partida.test.ts --silent=false",
+    "bench": "vitest run src/sim/bench.test.ts --silent=false",
+    "bench:perfil": "vite build --config tools/bench/vite.config.ts && node --cpu-prof --cpu-prof-dir=tools/bench/dist tools/bench/dist/bench.mjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

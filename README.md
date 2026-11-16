@@ -12,6 +12,7 @@ npm test             # testes da simulação
 npm run typecheck
 npm run sim          # cenários headless: 2.000 pessoas (hora a hora) e 2 anos de carreira
 LONGO=1 npm run sim:partida   # partida completa ★1 → Lendária com construtor automático (minutos)
+npm run bench:perfil          # desempenho com ~12 mil pessoas + perfil de CPU (tools/bench/dist)
 npm run data         # regenera src/data/unidades.json a partir de docs/dados/unidades.csv
 ```
 
@@ -20,7 +21,7 @@ botão direito/meio ou esquerdo sem ferramenta move a câmera · roda/`+`/`-` = 
 setas movem a câmera · `Espaço` pausa · `1`–`4` = 1×/2×/4×/8× ·
 `P` piso · `L` lobby · `E` escavação · `O` escritório · `A` apartamento · `V` elevador ·
 `T` escada · `X` demolir · `Esc` cancela · `Ctrl+Z` desfaz · `C` camadas · `R` relatórios ·
-`M` menu (salvar/carregar/exportar/áudio) · `?` atalhos · 🔊 na barra liga/desliga o som.
+`M` menu (salvar/carregar/exportar/áudio) · `F` desempenho · `?` atalhos · 🔊 na barra liga/desliga o som.
 
 Elevador: escolha a ferramenta e **arraste na vertical** para definir os andares.
 Clique (sem ferramenta) num poço ou unidade para abrir o inspetor: lá se
@@ -72,5 +73,5 @@ src/
 | 5 | Eventos | ✅ |
 | 6 | UX moderna: overlays, relatórios, save | ✅ |
 | 7 | Arte e áudio finais | ✅ |
-| 8 | Performance e escala | — |
+| 8 | Performance e escala | ✅ |
 | 9 | Balanceamento, beta, lançamento | — |

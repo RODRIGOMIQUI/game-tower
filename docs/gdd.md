@@ -366,6 +366,28 @@ sandbox, arte/áudio finais, 12k+ agentes a 60 fps.
 - Simulação determinística (RNG com seed) → saves e replays reproduzíveis.
 - Simulação headless roda 1 ano de jogo em < 30 s para balanceamento.
 
+**Medido na Fase 8** (torre de 12.270 pessoas em 85 andares, `npm run bench:perfil`):
+
+| Medida | Antes | Depois |
+|---|---|---|
+| Simulação no pico da manhã | 23 min de jogo/s | ~800 min/s |
+| Simulação no pico da tarde | 60 min/s | ~850 min/s |
+| 1 ano de jogo sem render | — | 14,5 s |
+| No navegador, velocidade 8× (precisa de 48 min/s) | — | 48 min/s o dia todo, inclusive com 7.240 pessoas na tela |
+| Desenhar 12.000 pessoas | ~70 ms (estimado) | ~3,4 ms |
+| Quadro com a torre cheia (pausado, zoom 1×) | — | ~6–7 ms |
+
+Como:
+- **Rotas por árvore:** um Dijkstra completo a partir de um ponto responde
+  rotas para todos os destinos; o grafo é simétrico, então a mesma árvore
+  serve para voltar (escritório → saída = saída → escritório invertido). A
+  raiz é a ponta mais consultada (entradas, lanchonetes).
+- **Pessoas em lote:** uma folha de texturas com todas as variações e um
+  `ParticleContainer`; só entra quem está na tela.
+- **Unidades:** sprites persistentes; mudança de situação só troca a textura
+  de quem mudou; sprites fora da tela não são desenhados (culling).
+- Painel de desempenho na tecla `F` (fps, ritmo da simulação, pessoas na tela).
+
 ---
 
 ## 15. Questões em aberto

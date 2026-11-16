@@ -21,6 +21,10 @@ let tickEnviado = -1;
 let dinheiroEnviado = NaN;
 let inspecionado = 0;
 let pessoaInspecionada = 0;
+/** Ticks simulados por segundo real (medido), para o painel de desempenho. */
+let ticksPorSegundo = 0;
+let ticksJanela = 0;
+let inicioJanela = performance.now();
 
 function enviar(msg: DaSim, transferir: Transferable[] = []): void {
   escopo.postMessage(msg, transferir);
@@ -52,6 +56,7 @@ function publicar(forcar = false): void {
         eventosLigados: jogo.eventos.ligado,
         podeDesfazer: jogo.podeDesfazer,
         contexto: jogo.contexto(),
+        ticksPorSegundo,
         cenario: jogo.cenario
           ? {
               nome: jogo.cenario.nome,
@@ -159,7 +164,11 @@ escopo.onmessage = async (e) => {
     inspecionado = msg.uid;
     publicar(true);
   } else if (msg.tipo === 'depurar' && import.meta.env.DEV) {
-    depurar(jogo, msg.acao);
+    if (msg.acao === 'torreGrande') {
+      // Torre de ~12 mil pessoas para medir desempenho (Fase 8).
+      const { montarTorreGrande } = await import('../sim/torre-grande');
+      montarTorreGrande(jogo);
+    } else depurar(jogo, msg.acao);
     publicar(true);
   } else if (msg.tipo === 'inspecionarPessoa') {
     pessoaInspecionada = msg.id;
@@ -180,6 +189,12 @@ setInterval(() => {
   acumulado += dt * TICKS_POR_SEGUNDO_1X * velocidade;
   const n = Math.min(Math.floor(acumulado), MAX_TICKS_POR_PASSO);
   acumulado = n === MAX_TICKS_POR_PASSO ? 0 : acumulado - n;
+  ticksJanela += n;
+  if (agora - inicioJanela >= 1000) {
+    ticksPorSegundo = (ticksJanela * 1000) / (agora - inicioJanela);
+    ticksJanela = 0;
+    inicioJanela = agora;
+  }
   if (n > 0) {
     const eventos = jogo.avancar(n);
     if (eventos.length) enviar({ tipo: 'eventos', eventos });

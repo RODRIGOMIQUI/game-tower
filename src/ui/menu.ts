@@ -34,6 +34,7 @@ export const ATALHOS_TEXTO: [string, string][] = [
   ['C', 'Trocar camada (estresse, satisfação, ruído, ocupação, espera, tráfego)'],
   ['R', 'Relatórios'],
   ['M', 'Menu do jogo (salvar, carregar…)'],
+  ['F', 'Painel de desempenho (fps, ritmo da simulação)'],
   ['?', 'Esta lista'],
   ['Esc', 'Cancelar / fechar'],
   ['Clique numa pessoa', 'Ficha da pessoa (e Seguir)'],

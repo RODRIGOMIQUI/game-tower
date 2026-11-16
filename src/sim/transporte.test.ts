@@ -45,6 +45,30 @@ describe('rotas', () => {
     expect(r[1]).toMatchObject({ de: 0, para: 4 });
   });
 
+  it('rota de volta é a de ida invertida, reaproveitando a árvore da outra ponta', () => {
+    const j = jogoRico();
+    construir(j, 'piso', 0, 0, 59, 19);
+    construir(j, 'lobby', 0, 0, 59, 0);
+    construir(j, 'elevador_padrao', 10, 0, 10, 10);
+    construir(j, 'elevador_padrao', 40, 10, 40, 19);
+    construir(j, 'escada', 30, 10);
+    const r = j.roteador;
+    const elevadores = (p: ReturnType<typeof r.rota>): number[][] =>
+      p!.flatMap((x) => (x.tipo === 'andar' ? [] : [[x.uid, x.de, x.para]]));
+    r.limparCache();
+    const ida = r.rota(2, 0, 50, 18);
+    const voltaComArvore = r.rota(50, 18, 2, 0); // usa a árvore montada na ida (invertida)
+    r.limparCache();
+    const voltaDoZero = r.rota(50, 18, 2, 0);
+    const p1 = j.mundo.unidadeEm(10, 0)!.uid;
+    const p2 = j.mundo.unidadeEm(40, 10)!.uid;
+    expect(elevadores(ida)).toEqual([[p1, 0, 10], [p2, 10, 18]]);
+    const invertida = elevadores(ida).reverse().map(([u, de, para]) => [u!, para!, de!]);
+    expect(elevadores(voltaComArvore)).toEqual(invertida);
+    expect(elevadores(voltaDoZero)).toEqual(invertida);
+    expect(voltaComArvore![voltaComArvore!.length - 1]).toEqual({ tipo: 'andar', x: 2 });
+  });
+
   it('escada comum: no máximo 2 andares a pé', () => {
     const j = jogoRico();
     construir(j, 'piso', 0, 0, 39, 3);

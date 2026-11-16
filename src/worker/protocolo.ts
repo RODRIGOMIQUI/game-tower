@@ -29,7 +29,7 @@ export type ParaSim =
   | { tipo: 'inspecionar'; uid: number }
   | { tipo: 'inspecionarPessoa'; id: number }
   /** Só em desenvolvimento: dispara eventos para testar o visual. */
-  | { tipo: 'depurar'; acao: 'incendio' | 'pane' | 'festival' };
+  | { tipo: 'depurar'; acao: 'incendio' | 'pane' | 'festival' | 'torreGrande' };
 
 export interface EstadoResumo {
   tick: number;
@@ -45,6 +45,8 @@ export interface EstadoResumo {
   progresso: Progresso;
   eventosLigados: boolean;
   podeDesfazer: number;
+  /** Desempenho: ticks simulados por segundo real (medido no Worker). */
+  ticksPorSegundo: number;
   /** Regras de construção atuais (estrela, sandbox, lote/poços do cenário), para a prévia. */
   contexto: Contexto;
   cenario: { nome: string; objetivo: string; progresso: string; concluido: boolean } | null;
