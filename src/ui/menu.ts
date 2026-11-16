@@ -99,8 +99,8 @@ export class Menu {
     const topo = el('div', 'menu-topo');
     const h = el('h2', '', titulo);
     topo.append(h);
-    if (voltar) topo.append(botao('← Voltar', voltar));
-    else if (this.emJogo || this.tela === 'atalhos') topo.append(botao('✕', () => this.voltarAoJogo()));
+    if (voltar) topo.append(botaoTopo('← Voltar', voltar, 'Voltar'));
+    else if (this.emJogo || this.tela === 'atalhos') topo.append(botaoTopo('✕', () => this.voltarAoJogo(), 'Fechar (Esc)'));
     const conteudo = el('div', 'menu-conteudo');
     c.append(topo, conteudo);
     return [c, conteudo];
@@ -243,6 +243,14 @@ function el(tag: string, classe: string, texto?: string): HTMLElement {
   if (classe) e.className = classe;
   if (texto !== undefined) e.textContent = texto;
   return e;
+}
+
+/** Botão compacto do cabeçalho do menu (não ocupa a largura toda). */
+function botaoTopo(texto: string, f: () => void, titulo: string): HTMLButtonElement {
+  const b = el('button', 'botao menu-topo-botao', texto) as HTMLButtonElement;
+  b.title = titulo;
+  b.onclick = f;
+  return b;
 }
 
 function botao(texto: string, f: () => void, classe = ''): HTMLButtonElement {
