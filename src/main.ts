@@ -12,6 +12,7 @@ import { ATALHOS, DEMOLIR, Hud } from './ui/hud';
 import { Inspetor } from './ui/inspetor';
 import type { DaSim, Dinamico, EstadoResumo, ParaSim } from './worker/protocolo';
 import type { EventoProgressao } from './sim/progressao';
+import type { EventoEspecial } from './sim/eventos';
 
 const app = new Application();
 const raiz = document.getElementById('jogo')!;
@@ -33,29 +34,52 @@ let hover: Celula | null = null;
 let ultimaVelocidade: Velocidade = 1;
 let proximoId = 1;
 let selecionado = 0;
+let pessoaSelecionada = 0;
+let seguindo = false;
 let dinamico: Dinamico | null = null;
 let clique: { x: number; y: number } | null = null;
 
 const hud = new Hud({
   velocidade: (v) => mudarVelocidade(v),
   ferramenta: (id) => escolherFerramenta(id),
+  eventos: (ligado) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'eventos', ligado } }),
 });
 
 const inspetor = new Inspetor({
   carros: (uid, delta) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'carros', uid, delta } }),
   modo: (uid, modo) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'modo', uid, modo } }),
   preco: (uid, nivel) => enviar({ tipo: 'comando', id: proximoId++, cmd: { tipo: 'preco', uid, nivel } }),
+  seguir: () => {
+    seguindo = !seguindo;
+    atualizarInspetor();
+  },
   fechar: () => selecionar(0),
 });
 
 function selecionar(uid: number): void {
   selecionado = uid;
+  pessoaSelecionada = 0;
+  seguindo = false;
+  enviar({ tipo: 'inspecionarPessoa', id: 0 });
   enviar({ tipo: 'inspecionar', uid });
   atualizarInspetor();
   atualizarFantasma();
 }
 
+function selecionarPessoa(id: number): void {
+  selecionado = 0;
+  pessoaSelecionada = id;
+  seguindo = false;
+  enviar({ tipo: 'inspecionar', uid: 0 });
+  enviar({ tipo: 'inspecionarPessoa', id });
+  atualizarFantasma();
+}
+
 function atualizarInspetor(): void {
+  if (pessoaSelecionada) {
+    if (dinamico?.ficha?.id === pessoaSelecionada || dinamico?.ficha === null) inspetor.mostrarPessoa(dinamico.ficha, seguindo);
+    return;
+  }
   const u = selecionado ? mundo.unidades.get(selecionado) ?? null : null;
   if (!u) selecionado = 0;
   inspetor.mostrar(
@@ -66,7 +90,15 @@ function atualizarInspetor(): void {
   );
 }
 
-app.ticker.add(() => cena.desenharDinamica(performance.now(), mundo));
+app.ticker.add(() => {
+  const agora = performance.now();
+  cena.desenharDinamica(agora, mundo);
+  cena.desenharFogos(agora, !!dinamico?.festival && data(estado?.tick ?? 0).hora >= 18);
+  if (seguindo && pessoaSelecionada) {
+    const p = cena.posicaoPessoa(pessoaSelecionada, agora) ?? dinamico?.ficha?.posicao;
+    if (p) cena.centralizarEm(p.x, p.y);
+  }
+});
 
 // ----------------------------------------------------------------- simulação
 worker.onmessage = (e: MessageEvent<DaSim>) => {
@@ -88,7 +120,7 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
       cena.receberDinamica(msg, performance.now());
       cena.desenharAlertas(mundo, msg.semAcesso);
       cena.atualizarSituacoes(msg.unidades, msg.versaoUnidades);
-      if (selecionado) atualizarInspetor();
+      if (selecionado || pessoaSelecionada) atualizarInspetor();
       break;
     case 'resultado': {
       const r = msg.resultado;
@@ -116,7 +148,8 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
           if (ev.caixa < 0) hud.aviso('Caixa negativo! Dois trimestres seguidos assim e a torre vai à falência.', 'erro');
         } else if (ev.tipo === 'falencia') {
           document.getElementById('fim')!.hidden = false;
-        } else avisarProgressao(ev);
+        } else if (ehProgressao(ev)) avisarProgressao(ev);
+        else avisarEvento(ev);
       }
       break;
   }
@@ -125,6 +158,67 @@ worker.onmessage = (e: MessageEvent<DaSim>) => {
 const sandbox = new URLSearchParams(location.search).get('sandbox') === '1';
 document.getElementById('novo-jogo')!.onclick = () => location.reload();
 enviar({ tipo: 'iniciar', seed: Date.now() >>> 0, sandbox });
+
+function ehProgressao(ev: EventoProgressao | EventoEspecial): ev is EventoProgressao {
+  return ['estrela', 'inspecao_agendada', 'inspecao', 'inauguracao_agendada', 'inauguracao'].includes(ev.tipo);
+}
+
+/** Aviso que leva a câmera até a unidade quando clicado. */
+function irAte(uid: number): (() => void) | undefined {
+  return () => {
+    const u = mundo.unidades.get(uid);
+    if (u) cena.centralizarEm(u.x + u.largura / 2, u.y);
+  };
+}
+
+function avisarEvento(ev: EventoEspecial): void {
+  switch (ev.tipo) {
+    case 'incendio':
+      hud.aviso(
+        `INCÊNDIO no andar ${nomeAndar(ev.andar)}! ${ev.brigada ? 'A brigada da segurança está a caminho.' : 'Sem brigada: bombeiros de fora chegam em 1h e vão cobrar caro.'}`,
+        'perigo',
+        9000,
+        irAte(ev.uid),
+      );
+      break;
+    case 'incendio_fim':
+      hud.aviso(
+        `Incêndio apagado: ${ev.danificadas} unidade(s) danificada(s), custo ${dinheiro(-ev.custo)}${ev.bombeiros ? ' (com bombeiros de fora)' : ''}.`,
+        'info',
+        7000,
+      );
+      break;
+    case 'pane':
+      hud.aviso(`Pane num elevador (andar ${nomeAndar(ev.andar)}): carro parado com gente dentro.`, 'erro', 6000, irAte(ev.uid));
+      break;
+    case 'pane_fim':
+      hud.aviso('Elevador consertado.', 'ok');
+      break;
+    case 'pragas':
+      hud.aviso(`Pragas em ${ev.uids.length} quarto(s) de hotel! Só a limpeza resolve.`, 'erro', 6000, irAte(ev.uids[0]!));
+      break;
+    case 'vip_chegou':
+      hud.aviso('Um hóspede VIP reservou uma suíte. Capriche nos elevadores!', 'conquista', 7000, irAte(ev.uid));
+      break;
+    case 'vip':
+      hud.aviso(
+        ev.boa
+          ? 'O VIP adorou a estadia: a reputação da torre subiu por alguns dias.'
+          : `O VIP saiu irritado (estresse ${Math.round(ev.estresse)}): a reputação caiu por alguns dias.`,
+        ev.boa ? 'conquista' : 'erro',
+        7000,
+      );
+      break;
+    case 'achado':
+      hud.aviso(`Achado arqueológico no subsolo! A torre recebeu ${dinheiro(ev.valor)}.`, 'conquista', 8000, () =>
+        cena.centralizarEm(ev.x, ev.y),
+      );
+      break;
+    case 'festival':
+      hud.aviso('Festival de ano novo! Muitos visitantes esta noite.', 'conquista', 8000);
+      break;
+  }
+}
 
 function avisarProgressao(ev: EventoProgressao): void {
   switch (ev.tipo) {
@@ -229,6 +323,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
 canvas.addEventListener('pointermove', (e) => {
   if (pan) {
+    if (Math.hypot(e.offsetX - pan.x, e.offsetY - pan.y) > 2) seguindo = false;
     cena.camera.mover(e.offsetX - pan.x, e.offsetY - pan.y);
     cena.aplicarCamera();
     pan = { x: e.offsetX, y: e.offsetY };
@@ -249,10 +344,14 @@ canvas.addEventListener('pointerup', (e) => {
         : ({ tipo: 'construir', item: ferramenta, x0: a.x, y0: a.y, x1: b.x, y1: b.y } as const);
     enviar({ tipo: 'comando', id: proximoId++, cmd });
   }
-  // Clique sem ferramenta (sem arrastar): seleciona o que está sob o cursor.
+  // Clique sem ferramenta (sem arrastar): seleciona a pessoa ou a unidade sob o cursor.
   if (clique && Math.hypot(e.offsetX - clique.x, e.offsetY - clique.y) < 4) {
-    const c = cena.celulaEm(e.offsetX, e.offsetY);
-    selecionar(mundo.uidEm(c.x, c.y));
+    const pessoa = cena.pessoaEm(e.offsetX, e.offsetY);
+    if (pessoa) selecionarPessoa(pessoa);
+    else {
+      const c = cena.celulaEm(e.offsetX, e.offsetY);
+      selecionar(mundo.uidEm(c.x, c.y));
+    }
   }
   clique = null;
   arrasto = null;
@@ -293,7 +392,7 @@ window.addEventListener('keydown', (e) => {
     if (arrasto) {
       arrasto = null;
       atualizarFantasma();
-    } else if (selecionado) selecionar(0);
+    } else if (selecionado || pessoaSelecionada) selecionar(0);
     else escolherFerramenta(null);
   } else if (['1', '2', '3', '4'].includes(k)) mudarVelocidade(([1, 2, 4, 8] as const)[Number(k) - 1]!);
   else if (k === 'arrowleft') mover(PASSO_TECLA, 0);
@@ -311,5 +410,7 @@ window.addEventListener('keydown', (e) => {
 
 // Depuração em desenvolvimento: inspecionar pelo console do navegador.
 if (import.meta.env.DEV) {
-  Object.assign(window, { __gt: { app, cena, mundo: () => mundo, estado: () => estado } });
+  Object.assign(window, {
+    __gt: { app, cena, mundo: () => mundo, estado: () => estado, dinamico: () => dinamico, enviar },
+  });
 }

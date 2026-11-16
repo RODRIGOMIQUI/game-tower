@@ -282,19 +282,25 @@ Detalhes, fórmulas e curva de balanceamento em [economia.md](economia.md).
 
 ## 10. Eventos
 
-| Evento | Quando | Resposta |
+| Evento | Quando | O que acontece |
 |---|---|---|
-| **Incêndio** | ★2+, chance por trimestre cresce com a altura | segurança envia brigada; sem segurança, incêndio se espalha e você paga bombeiros externos |
-| **Pane de elevador** | aleatório, mais em poços muito usados | carro para por algumas horas; manutenção maior reduz chance |
-| **Pragas** | quarto de hotel sujo por > 1 dia | quartos vizinhos ficam indisponíveis até limpeza |
-| **Inspeção** | gatilho de estrela | ver §8 |
-| **Hóspede VIP** | ★3+, ao ter suíte | se a estadia for boa, bônus de reputação (+satisfação geral temporária) |
-| **Achado no subsolo** | ao escavar B5+ | bônus em dinheiro único |
-| **Festival de ano novo** | fim do ano 1+ | visitantes extras; fogos no céu |
+| **Incêndio** | 2★+; chance diária 2% + 0,04% por andar de altura, sorteada entre 8h e 21h | Começa numa unidade e tenta se espalhar a cada 20 min (30% por vizinho no mesmo andar ou logo acima). Quem está dentro sai às pressas. **Com Segurança alcançável:** a brigada chega em 15–90 min e apaga um foco a cada 10 min por unidade de segurança. **Sem ela:** bombeiros de fora chegam em 60 min e cobram $100.000 + $25.000 por unidade atingida. Toda unidade atingida perde o inquilino e custa 20% do valor em reparos. |
+| **Pane de elevador** | Qualquer nível; chance por hora por carro, maior com o uso do dia | O carro para por 1h30–3h com quem estiver dentro, que vai se estressando. Uma pane por poço de cada vez. |
+| **Pragas** | Quarto de hotel sujo há 2 dias | O quarto fica infestado e contamina os quartos vizinhos a cada noite. A limpeza resolve, gastando o dobro. |
+| **Inspeção** | Gatilho da 5ª estrela | Ver §8. |
+| **Hóspede VIP** | 3★+, ao reservar suíte (30%, no máximo 1 por trimestre) | Pessoa dourada. Se o maior estresse dela ficar abaixo de 30, a reputação dá +8 de satisfação a todas as unidades por 8 dias; senão, −8. |
+| **Achado no subsolo** | Escavando do B5 para baixo (0,4% por célula, uma vez por jogo) | Bônus de $300.000 a $700.000. |
+| **Festival de ano novo** | Última noite do ano, 18h–24h | Visitantes extras em comida, lojas e Coroa; fogos no céu. |
 
-Eventos podem ser desligados no modo sandbox.
+- Avisos de eventos com local são clicáveis: a câmera vai até lá.
+- No sandbox, um botão na barra superior liga e desliga os eventos.
 
----
+### 10.1 Ficha da pessoa
+
+Clicar numa pessoa (sem ferramenta selecionada) abre a ficha: nome, tipo,
+unidade de vínculo, o que está fazendo, estresse e os últimos acontecimentos
+("09:02 chegou ao trabalho", "esperou 23 min pelo elevador no andar 1").
+**Seguir** prende a câmera nela até você arrastar a tela.
 
 ## 11. Interface
 

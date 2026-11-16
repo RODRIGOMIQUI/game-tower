@@ -36,6 +36,10 @@ export interface Carro {
   paradas: Set<number>;
   /** Chamada reservada por este carro enquanto vai buscá-la. */
   reserva: { andar: number; dir: Direcao } | null;
+  /** Ticks restantes de pane (carro parado entre andares). */
+  pane: number;
+  /** Paradas com embarque hoje (desgaste: mais uso, mais pane). */
+  viagensHoje: number;
 }
 
 interface Fila {
@@ -109,6 +113,8 @@ export class Poco {
       passageiros: [],
       paradas: new Set(),
       reserva: null,
+      pane: 0,
+      viagensHoje: 0,
     });
     return true;
   }
@@ -195,6 +201,10 @@ export class Poco {
   }
 
   private passoCarro(c: Carro, tick: number, hora: number, p: Passageiros): void {
+    if (c.pane > 0) {
+      c.pane--;
+      return;
+    }
     if (c.portas > 0) {
       c.portas--;
       if (c.portas === 0) this.decidir(c, hora);
@@ -281,6 +291,7 @@ export class Poco {
     }
     if (sentido === 0) return;
     const fila = filaDe(sentido);
+    if (fila.length) c.viagensHoje++;
     while (fila.length && c.passageiros.length < this.capacidade) {
       const id = fila.shift()!;
       c.passageiros.push(id);

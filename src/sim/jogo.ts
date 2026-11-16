@@ -7,7 +7,8 @@ import { Est, LARGURA, Mundo, type SnapshotMundo } from './mundo';
 import { Inquilinos, POPULACAO_EXIGE_RECICLAGEM, type CategoriaReceita, type NivelPreco } from './inquilinos';
 import { centro, Populacao, type Ambiente, type Entrada, type Estacionamento } from './pessoas';
 import { Progressao, type EventoProgressao, type Progresso } from './progressao';
-import { inicioDeTrimestre, MIN_POR_DIA, TICK_INICIAL } from './relogio';
+import { Eventos, type ContextoEventos, type EventoEspecial } from './eventos';
+import { data, inicioDeTrimestre, MIN_POR_DIA, TICK_INICIAL } from './relogio';
 import { Rng } from './rng';
 import { Roteador } from './rotas';
 import { Transito, type ModoElevador } from './transito';
@@ -23,11 +24,12 @@ export type Comando =
   | { tipo: 'demolir'; x0: number; y0: number; x1: number; y1: number }
   | { tipo: 'carros'; uid: number; delta: 1 | -1 }
   | { tipo: 'modo'; uid: number; modo: ModoElevador }
-  | { tipo: 'preco'; uid: number; nivel: NivelPreco };
+  | { tipo: 'preco'; uid: number; nivel: NivelPreco }
+  | { tipo: 'eventos'; ligado: boolean };
 
 export interface ResultadoComando {
   ok: boolean;
-  acao: Plano['acao'] | 'elevador' | 'preco';
+  acao: Plano['acao'] | 'elevador' | 'preco' | 'eventos';
   feitos: number;
   /** Positivo = gasto; negativo = reembolso. */
   custo: number;
@@ -39,18 +41,26 @@ export interface Livro {
   receitas: Record<CategoriaReceita, number>;
   construcao: number;
   manutencao: number;
+  /** Despesas de eventos: bombeiros e reparos. */
+  eventos: number;
 }
 
 export type EventoJogo =
   | { tipo: 'trimestre'; tick: number; manutencao: number; livro: Livro; saidas: number; caixa: number }
   | { tipo: 'falencia'; tick: number }
-  | EventoProgressao;
+  | EventoProgressao
+  | EventoEspecial;
 
 /** Trimestres seguidos com caixa negativo até a falência (modo carreira). */
 export const TRIMESTRES_ATE_FALENCIA = 2;
 
 function livroVazio(): Livro {
-  return { receitas: { aluguel: 0, vendas: 0, hotel: 0, comida: 0, estacionamento: 0 }, construcao: 0, manutencao: 0 };
+  return {
+    receitas: { aluguel: 0, vendas: 0, hotel: 0, comida: 0, estacionamento: 0, outros: 0 },
+    construcao: 0,
+    manutencao: 0,
+    eventos: 0,
+  };
 }
 
 export interface OpcoesJogo {
@@ -60,6 +70,8 @@ export interface OpcoesJogo {
   sandbox?: boolean;
   /** Multiplica as metas de população das estrelas (testes). */
   escalaPopulacao?: number;
+  /** Eventos especiais (incêndio, pane, pragas...). Padrão: ligados. */
+  eventos?: boolean;
 }
 
 export class Jogo {
@@ -75,6 +87,7 @@ export class Jogo {
   /** Rotas da equipe (podem usar elevador de serviço). */
   readonly roteadorEquipe = new Roteador(true);
   readonly progressao: Progressao;
+  readonly eventos = new Eventos();
   /** Eventos gerados dentro de callbacks, entregues no fim de `avancar`. */
   private pendentes: EventoJogo[] = [];
   readonly populacao: Populacao;
@@ -93,6 +106,7 @@ export class Jogo {
     this.dinheiro = opts.dinheiro ?? (this.sandbox ? DINHEIRO_SANDBOX : DINHEIRO_INICIAL);
     this.progressao = new Progressao(opts.escalaPopulacao ?? 1);
     this.progressao.estrela = opts.estrela ?? 1;
+    this.eventos.ligado = opts.eventos ?? true;
     this.inquilinos = new Inquilinos({ creditar: (c, v) => this.creditar(c, v) });
     this.populacao = new Populacao(this.ambiente());
   }
@@ -139,7 +153,7 @@ export class Jogo {
           this.progressao.cliente(p);
         },
         partiu: (p) => {
-          this.inquilinos.partiu(p, this.populacao);
+          this.inquilinos.partiu(p, this.populacao, data(this.tick).diaTotal);
           this.pendentes.push(...this.progressao.partiu(p, this.tick));
         },
       },
@@ -151,6 +165,10 @@ export class Jogo {
     if (cmd.tipo === 'preco') {
       const ok = this.inquilinos.mudarPreco(cmd.uid, cmd.nivel);
       return { ok, acao: 'preco', feitos: ok ? 1 : 0, custo: 0, motivo: ok ? undefined : 'Esta unidade não tem preço' };
+    }
+    if (cmd.tipo === 'eventos') {
+      this.eventos.ligado = cmd.ligado;
+      return { ok: true, acao: 'eventos', feitos: 1, custo: 0 };
     }
     if (cmd.tipo === 'modo') {
       const p = this.transito.pocos.get(cmd.uid);
@@ -166,6 +184,10 @@ export class Jogo {
       this.dinheiro -= plano.custoTotal;
       this.livro.construcao += plano.custoTotal;
       this.mundoMudou();
+      if (cmd.tipo === 'construir' && cmd.item === 'escavacao') {
+        const achado = this.eventos.aoEscavar(plano.itens.filter((i) => i.ok), this.contextoEventos());
+        if (achado) this.pendentes.push(achado);
+      }
     }
     return {
       ok: plano.validos > 0,
@@ -215,7 +237,32 @@ export class Jogo {
   }
 
   private contextoEconomia() {
-    return { mundo: this.mundo, populacao: this.populacao, rng: this.rng, semAcesso: this.semAcessoSet };
+    return {
+      mundo: this.mundo,
+      populacao: this.populacao,
+      rng: this.rng,
+      semAcesso: this.semAcessoSet,
+      estrela: this.estrela,
+      eventos: this.eventos.ligado,
+      festival: this.eventos.festival,
+    };
+  }
+
+  private contextoEventos(): ContextoEventos {
+    return {
+      mundo: this.mundo,
+      populacao: this.populacao,
+      inquilinos: this.inquilinos,
+      transito: this.transito,
+      roteadorEquipe: this.roteadorEquipe,
+      rng: this.rng,
+      estrela: this.estrela,
+      cobrar: (v) => {
+        this.dinheiro -= v;
+        this.livro.eventos += v;
+      },
+      creditar: (v) => this.creditar('outros', v),
+    };
   }
 
   /** Ocupa todas as unidades vagas (testes/cenários). */
@@ -230,7 +277,10 @@ export class Jogo {
       this.tick++;
       const minuto = this.tick % MIN_POR_DIA;
       if (minuto === 0) {
-        this.inquilinos.fimDoDia(this.populacao, this.semReciclagem());
+        const dia = data(this.tick).diaTotal;
+        this.inquilinos.fimDoDia(this.populacao, this.semReciclagem(), dia);
+        this.inquilinos.pragas(this.mundo, dia, this.eventos.ligado);
+        this.eventos.diario(this.transito);
         const carros = this.populacao.consumirUsosEstacionamento();
         if (carros) this.creditar('estacionamento', carros * tipo('estacionamento').receita_valor);
         this.populacao.novoDia(this.tick);
@@ -238,6 +288,7 @@ export class Jogo {
       }
       if (inicioDeTrimestre(this.tick)) eventos.push(...this.fecharTrimestre());
       if (minuto % 60 === 0) {
+        eventos.push(...this.eventos.hora(this.tick, this.contextoEventos()));
         this.inquilinos.hora(this.tick, this.contextoEconomia());
         eventos.push(...this.progressao.hora(this.tick, this.contextoProgressao()));
       }
@@ -245,6 +296,11 @@ export class Jogo {
       if (minuto % INTERVALO_ROTAS === 0) this.roteador.limparCache();
       this.transito.passo(this.tick, Math.floor(minuto / 60), this.populacao);
       this.populacao.passo(this.tick);
+      if (this.eventos.emChamas || this.eventos.temPanes) eventos.push(...this.eventos.passo(this.tick, this.contextoEventos()));
+      if (this.inquilinos.pendentes.length) {
+        eventos.push(...this.inquilinos.pendentes);
+        this.inquilinos.pendentes = [];
+      }
       if (this.pendentes.length) {
         eventos.push(...this.pendentes);
         this.pendentes = [];
@@ -293,11 +349,11 @@ export class Jogo {
     return this.mundo.snapshot();
   }
 
-  /** Posições dos carros para o render: [uid, pos, carga, capacidade] por carro. */
+  /** Posições dos carros para o render: [uid, pos, carga, capacidade, pane] por carro. */
   carros(): Float32Array {
     const r: number[] = [];
     for (const p of this.transito.pocos.values()) {
-      for (const c of p.carros) r.push(p.uid, c.pos, c.passageiros.length, p.capacidade);
+      for (const c of p.carros) r.push(p.uid, c.pos, c.passageiros.length, p.capacidade, c.pane > 0 ? 1 : 0);
     }
     return new Float32Array(r);
   }

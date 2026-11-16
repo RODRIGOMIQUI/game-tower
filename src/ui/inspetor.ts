@@ -5,14 +5,24 @@ import type { ResumoPoco } from '../sim/jogo';
 import { nomeAndar, type Unidade } from '../sim/mundo';
 import type { ModoElevador } from '../sim/transito';
 import type { Inspecao } from '../worker/protocolo';
+import type { FichaPessoa } from '../sim/pessoas';
 import { dinheiro, inteiro } from './formato';
 
 export interface AcoesInspetor {
   carros(uid: number, delta: 1 | -1): void;
   modo(uid: number, modo: ModoElevador): void;
   preco(uid: number, nivel: NivelPreco): void;
+  seguir(): void;
   fechar(): void;
 }
+
+const NOME_TIPO: Record<FichaPessoa['tipo'], string> = {
+  funcionario: 'Funcionário',
+  morador: 'Morador',
+  hospede: 'Hóspede',
+  visitante: 'Visitante',
+  inspetor: 'Inspetor',
+};
 
 const MODOS: [ModoElevador, string][] = [
   ['coletivo', 'Coletivo'],
@@ -99,6 +109,36 @@ export class Inspetor {
     this.raiz.hidden = false;
   }
 
+  /** Ficha da pessoa (docs/gdd.md §5.4). */
+  mostrarPessoa(f: FichaPessoa | null, seguindo: boolean): void {
+    if (!f) {
+      this.raiz.innerHTML = `<div class="insp-topo"><h2>Pessoa</h2><button class="botao fechar">✕</button></div><p class="obs">Esta pessoa saiu do prédio de vez.</p>`;
+      this.raiz.querySelector<HTMLButtonElement>('.fechar')!.onclick = () => this.acoes.fechar();
+      this.raiz.hidden = false;
+      this.chave = '';
+      return;
+    }
+    const chave = JSON.stringify([f.id, f.situacao, Math.round(f.estresse), f.historico, seguindo]);
+    if (chave === this.chave) return;
+    this.chave = chave;
+    this.uidAtual = 0;
+    const est = Math.round(f.estresse);
+    const nivel = est >= 70 ? 'ruim' : est >= 40 ? 'ok' : 'boa';
+    const humor = est >= 70 ? 'furioso' : est >= 40 ? 'irritado' : 'tranquilo';
+    this.raiz.innerHTML = `
+      <div class="insp-topo"><h2>${f.nome}${f.vip ? ' <span class="vip">VIP</span>' : ''}</h2><button class="botao fechar" title="Fechar (Esc)">✕</button></div>
+      <div class="kv"><span>Tipo</span><b>${NOME_TIPO[f.tipo]}</b></div>
+      <div class="kv"><span>Vínculo</span><b>${f.vinculo}</b></div>
+      <p class="situacao-pessoa">${f.situacao}</p>
+      <div class="kv"><span>Estresse</span><b>${est} · ${humor}</b></div>
+      <div class="barra"><div class="${nivel}" style="width:${est}%"></div></div>
+      <div class="historico">${f.historico.map((h) => `<div>${h}</div>`).join('') || '<div class="obs">Nada a relatar ainda.</div>'}</div>
+      <div class="insp-acoes"><button class="botao seguir">${seguindo ? 'Parar de seguir' : 'Seguir'}</button></div>`;
+    this.raiz.querySelector<HTMLButtonElement>('.fechar')!.onclick = () => this.acoes.fechar();
+    this.raiz.querySelector<HTMLButtonElement>('.seguir')!.onclick = () => this.acoes.seguir();
+    this.raiz.hidden = false;
+  }
+
   private blocoSatisfacao(e: EstadoUnidade, insp: Inspecao): string {
     const vaga = e.situacao === 'vaga';
     const valor = vaga ? insp.expectativa : e.satisfacao;
@@ -147,7 +187,13 @@ function rotuloSituacao(t: TipoUnidade, e: EstadoUnidade): string {
     case 'venda':
       return e.situacao === 'vaga' ? (e.desvalorizado ? 'À venda (−30%)' : 'À venda') : 'Vendido';
     case 'diaria':
-      return { vaga: 'Livre', hospedada: 'Hóspedes esta noite', suja: 'Aguardando limpeza', ocupada: 'Ocupado' }[e.situacao];
+      return {
+        vaga: 'Livre',
+        hospedada: 'Hóspedes esta noite',
+        suja: 'Aguardando limpeza',
+        infestada: 'Pragas! Aguardando limpeza',
+        ocupada: 'Ocupado',
+      }[e.situacao];
     default:
       return 'Funcionando';
   }

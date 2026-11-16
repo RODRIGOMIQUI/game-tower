@@ -23,10 +23,10 @@ export const NIVEIS_PRECO: Record<NivelPreco, { nome: string; mult: number; sati
   premium: { nome: 'Premium', mult: 1.6, satisfacao: -20, demanda: 0.3 },
 };
 
-export type Situacao = 'vaga' | 'ocupada' | 'hospedada' | 'suja';
-export const CODIGO_SITUACAO: Record<Situacao, number> = { vaga: 0, ocupada: 1, hospedada: 2, suja: 3 };
+export type Situacao = 'vaga' | 'ocupada' | 'hospedada' | 'suja' | 'infestada';
+export const CODIGO_SITUACAO: Record<Situacao, number> = { vaga: 0, ocupada: 1, hospedada: 2, suja: 3, infestada: 4 };
 
-export type CategoriaReceita = 'aluguel' | 'vendas' | 'hotel' | 'comida' | 'estacionamento';
+export type CategoriaReceita = 'aluguel' | 'vendas' | 'hotel' | 'comida' | 'estacionamento' | 'outros';
 
 export interface Componentes {
   estresse: number;
@@ -35,6 +35,7 @@ export interface Componentes {
   preco: number;
   clientes: number;
   sujeira: number;
+  reputacao: number;
 }
 
 export interface EstadoUnidade {
@@ -54,7 +55,15 @@ export interface EstadoUnidade {
   clientesHoje: number;
   /** Quarto de hotel alcançável por alguma equipe de limpeza. */
   limpavel: boolean;
+  /** Dia em que o quarto ficou sujo (pragas após mais de um dia). */
+  sujaDesde: number;
 }
+
+/** Avisos da economia que viram eventos do jogo. */
+export type EventoInquilinos =
+  | { tipo: 'pragas'; uids: number[] }
+  | { tipo: 'vip_chegou'; uid: number }
+  | { tipo: 'vip'; boa: boolean; estresse: number };
 
 /** Quem recebe o dinheiro (o Jogo). */
 export interface Caixa {
@@ -66,7 +75,20 @@ export interface ContextoEconomia {
   populacao: Populacao;
   rng: Rng;
   semAcesso: Set<number>;
+  estrela: number;
+  /** Eventos especiais ligados (desligáveis no sandbox). */
+  eventos: boolean;
+  /** Festival de ano novo em andamento. */
+  festival: boolean;
 }
+
+/** Chance de uma reserva de suíte ser de um VIP (no máximo um por trimestre). */
+export const CHANCE_VIP = 0.3;
+/** Bônus/penalidade de reputação após a visita do VIP, e por quantos dias. */
+export const REPUTACAO_VIP = 8;
+export const DIAS_REPUTACAO = 8;
+/** Estresse máximo do VIP para a estadia contar como boa. */
+export const ESTRESSE_MAX_VIP = 30;
 
 /** Satisfação abaixo da qual o inquilino recebe um aviso no trimestre. */
 export const SATISFACAO_CRITICA = 25;
@@ -89,6 +111,9 @@ const VISITAS: Record<string, [number, number, number][]> = {
   loja: [[10, 20, 8]],
   coroa: [[10, 22, 12]],
 };
+/** Festival de ano novo: visitantes extras por hora nas unidades de consumo, 18h–24h. */
+const VISITAS_FESTIVAL = 15;
+const TIPOS_FESTIVAL = new Set(['lanchonete', 'restaurante', 'loja', 'coroa'])
 /** Quartos que uma unidade de limpeza arruma por dia (10h–17h). */
 const QUARTOS_POR_LIMPEZA_DIA = 20;
 const HORAS_LIMPEZA = 7;
@@ -117,6 +142,11 @@ export class Inquilinos {
   /** Incrementa quando situação/satisfação mudam (o render redesenha). */
   versao = 0;
   private creditoLimpeza = 0;
+  /** Bônus de satisfação da reputação (VIP) e até que dia vale. */
+  reputacao = 0;
+  private reputacaoAte = -1;
+  private vipNoTrimestre = false;
+  pendentes: EventoInquilinos[] = [];
 
   constructor(private readonly caixa: Caixa) {}
 
@@ -134,8 +164,8 @@ export class Inquilinos {
       if (!m) continue;
       this.estados.set(u.uid, {
         uid: u.uid, tipo: u.tipo, situacao: m === 'cliente' ? 'ocupada' : 'vaga', preco: 'normal',
-        satisfacao: 70, componentes: { estresse: 0, ruido: 0, servicos: 0, preco: 0, clientes: 0, sujeira: 0 },
-        avisos: 0, desvalorizado: false, estresseClientes: 0, clientesHoje: 0, limpavel: false,
+        satisfacao: 70, componentes: { estresse: 0, ruido: 0, servicos: 0, preco: 0, clientes: 0, sujeira: 0, reputacao: 0 },
+        avisos: 0, desvalorizado: false, estresseClientes: 0, clientesHoje: 0, limpavel: false, sujaDesde: 0,
       });
     }
     this.versao++;
@@ -201,7 +231,7 @@ export class Inquilinos {
   /** Satisfação esperada sem contar o estresse (usada para atrair inquilinos). */
   expectativa(e: EstadoUnidade): number {
     const c = e.componentes;
-    return clamp(90 - c.ruido + c.servicos + c.preco - c.sujeira);
+    return clamp(90 - c.ruido + c.servicos + c.preco - c.sujeira + c.reputacao);
   }
 
   mudarPreco(uid: number, nivel: NivelPreco): boolean {
@@ -258,7 +288,13 @@ export class Inquilinos {
       const u = ctx.mundo.unidades.get(e.uid)!;
       const t = tipo(u.tipo);
       const chegada = 900 + ctx.rng.inteiro(0, 240); // 15:00–19:00
-      ctx.populacao.hospedar(u, t.capacidade, chegada, tick);
+      const vip =
+        ctx.eventos && u.tipo === 'hotel_suite' && ctx.estrela >= 3 && !this.vipNoTrimestre && ctx.rng.proximo() < CHANCE_VIP;
+      ctx.populacao.hospedar(u, t.capacidade, chegada, tick, vip);
+      if (vip) {
+        this.vipNoTrimestre = true;
+        this.pendentes.push({ tipo: 'vip_chegou', uid: u.uid });
+      }
       e.situacao = 'hospedada';
       this.caixa.creditar('hotel', Math.round(t.receita_valor * NIVEIS_PRECO[e.preco].mult));
       this.versao++;
@@ -270,12 +306,16 @@ export class Inquilinos {
     for (const u of mundo.unidades.values()) if (u.tipo === 'limpeza') equipes++;
     if (!equipes) return;
     this.creditoLimpeza += (equipes * QUARTOS_POR_LIMPEZA_DIA) / HORAS_LIMPEZA;
-    for (const e of this.estados.values()) {
-      if (this.creditoLimpeza < 1) break;
-      if (e.situacao !== 'suja' || !e.limpavel) continue;
-      e.situacao = 'vaga';
-      this.creditoLimpeza--;
-      this.versao++;
+    // Quartos infestados primeiro (custam o dobro), depois os sujos.
+    for (const alvo of ['infestada', 'suja'] as const) {
+      const custo = alvo === 'infestada' ? 2 : 1;
+      for (const e of this.estados.values()) {
+        if (this.creditoLimpeza < custo) break;
+        if (e.situacao !== alvo || !e.limpavel) continue;
+        e.situacao = 'vaga';
+        this.creditoLimpeza -= custo;
+        this.versao++;
+      }
     }
     if (this.creditoLimpeza > 1) this.creditoLimpeza = 1; // não acumula de um dia para outro
   }
@@ -290,6 +330,14 @@ export class Inquilinos {
       const fator = NIVEIS_PRECO[e.preco].demanda * (0.3 + 0.7 * (e.satisfacao / 100)) * (fimDeSemana ? 1.5 : 1);
       const n = Math.round(faixa[2] * fator * (0.6 + ctx.rng.proximo() * 0.8));
       for (let i = 0; i < n; i++) ctx.populacao.visitar(u, h * 60 + ctx.rng.inteiro(0, 59), tick);
+    }
+    // Festival de ano novo: movimento extra à noite em tudo que é de consumo.
+    if (ctx.festival && h >= 18) {
+      for (const e of this.estados.values()) {
+        if (!TIPOS_FESTIVAL.has(e.tipo) || e.situacao !== 'ocupada' || ctx.semAcesso.has(e.uid)) continue;
+        const u = ctx.mundo.unidades.get(e.uid)!;
+        for (let i = 0; i < VISITAS_FESTIVAL; i++) ctx.populacao.visitar(u, h * 60 + ctx.rng.inteiro(0, 59), tick);
+      }
     }
   }
 
@@ -307,24 +355,73 @@ export class Inquilinos {
   }
 
   /** Hóspede saiu do prédio: quando o último sai, o quarto fica sujo. */
-  partiu(p: Pessoa, populacao: Populacao): void {
+  partiu(p: Pessoa, populacao: Populacao, dia: number): void {
     if (p.tipo !== 'hospede') return;
+    if (p.vip) {
+      const estresse = Math.max(p.pico, p.estresse);
+      const boa = p.chegou && estresse < ESTRESSE_MAX_VIP;
+      this.reputacao = boa ? REPUTACAO_VIP : -REPUTACAO_VIP;
+      this.reputacaoAte = dia + DIAS_REPUTACAO;
+      for (const e of this.estados.values()) e.componentes.reputacao = this.reputacao;
+      this.pendentes.push({ tipo: 'vip', boa, estresse });
+    }
     const e = this.estados.get(p.casa);
     if (!e || e.situacao !== 'hospedada') return;
     if (p.chegou) e.estresseClientes = e.estresseClientes * 0.7 + p.estresse * 0.3;
     const restantes = populacao.ocupantes(p.casa).filter((o) => o.id !== p.id);
     if (restantes.length) return;
     e.situacao = p.chegou ? 'suja' : 'vaga';
+    e.sujaDesde = dia;
+    this.versao++;
+  }
+
+  /** Meia-noite: quartos sujos há mais de um dia pegam pragas, que se espalham. */
+  pragas(mundo: Mundo, dia: number, ligado: boolean): void {
+    if (!ligado) return;
+    const novas: number[] = [];
+    const quartos = [...this.estados.values()].filter((e) => e.tipo.startsWith('hotel_'));
+    for (const e of quartos) {
+      if (e.situacao === 'suja' && dia - e.sujaDesde >= 2) novas.push(e.uid);
+    }
+    for (const e of quartos) {
+      if (e.situacao !== 'infestada') continue;
+      const u = mundo.unidades.get(e.uid)!;
+      for (const v of quartos) {
+        if (v.situacao !== 'vaga' && v.situacao !== 'suja') continue;
+        const w = mundo.unidades.get(v.uid)!;
+        if (w.y === u.y && (w.x === u.x + u.largura || w.x + w.largura === u.x)) novas.push(v.uid);
+      }
+    }
+    const unicas = [...new Set(novas)];
+    for (const uid of unicas) this.estados.get(uid)!.situacao = 'infestada';
+    if (unicas.length) {
+      this.versao++;
+      this.pendentes.push({ tipo: 'pragas', uids: unicas });
+    }
+  }
+
+  /** Incêndio: o inquilino vai embora e a unidade fica vaga. */
+  danificar(uid: number, populacao: Populacao): void {
+    const e = this.estados.get(uid);
+    if (!e) return;
+    if (e.situacao === 'ocupada' && e.tipo !== 'lanchonete' && e.tipo !== 'restaurante' && e.tipo !== 'coroa') {
+      populacao.desocupar(uid);
+      e.situacao = 'vaga';
+      if (e.tipo === 'apartamento') e.desvalorizado = true;
+    }
+    e.satisfacao = Math.min(e.satisfacao, 40);
     this.versao++;
   }
 
   // ---------------------------------------------------------- por dia
 
   /** Meia-noite: atualiza a satisfação de cada unidade. */
-  fimDoDia(populacao: Populacao, semReciclagem: boolean): void {
+  fimDoDia(populacao: Populacao, semReciclagem: boolean, dia: number): void {
+    if (dia > this.reputacaoAte) this.reputacao = 0;
     for (const e of this.estados.values()) {
       const c = e.componentes;
       c.sujeira = semReciclagem ? PENALIDADE_SUJEIRA : 0;
+      c.reputacao = this.reputacao;
       if (e.situacao === 'vaga' && (e.tipo === 'escritorio' || e.tipo === 'apartamento' || e.tipo === 'loja')) {
         c.estresse = 0;
         c.clientes = 0;
@@ -338,7 +435,7 @@ export class Inquilinos {
       // Loja sem movimento: o lojista reclama.
       c.clientes = e.tipo === 'loja' && e.clientesHoje < 5 ? -20 : 0;
       e.clientesHoje = 0;
-      const hoje = clamp(100 - c.estresse * 0.6 - c.ruido + c.servicos + c.preco + c.clientes - c.sujeira);
+      const hoje = clamp(100 - c.estresse * 0.6 - c.ruido + c.servicos + c.preco + c.clientes - c.sujeira + c.reputacao);
       e.satisfacao = e.satisfacao * 0.65 + hoje * 0.35;
     }
     this.versao++;
@@ -348,6 +445,7 @@ export class Inquilinos {
 
   /** Cobra aluguéis e aplica avisos; devolve as unidades cujo inquilino saiu. */
   fecharTrimestre(populacao: Populacao, mundo: Mundo): number[] {
+    this.vipNoTrimestre = false;
     const saidas: number[] = [];
     for (const e of this.estados.values()) {
       const u = mundo.unidades.get(e.uid);

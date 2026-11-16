@@ -2,6 +2,7 @@
 import type { Comando, EventoJogo, Livro, ResultadoComando, ResumoPoco } from '../sim/jogo';
 import type { EstadoUnidade } from '../sim/inquilinos';
 import type { Progresso } from '../sim/progressao';
+import type { FichaPessoa } from '../sim/pessoas';
 import type { Estatisticas } from '../sim/pessoas';
 import type { SnapshotMundo } from '../sim/mundo';
 import type { Velocidade } from '../sim/relogio';
@@ -10,7 +11,10 @@ export type ParaSim =
   | { tipo: 'iniciar'; seed: number; sandbox: boolean }
   | { tipo: 'comando'; id: number; cmd: Comando }
   | { tipo: 'velocidade'; v: Velocidade }
-  | { tipo: 'inspecionar'; uid: number };
+  | { tipo: 'inspecionar'; uid: number }
+  | { tipo: 'inspecionarPessoa'; id: number }
+  /** Só em desenvolvimento: dispara eventos para testar o visual. */
+  | { tipo: 'depurar'; acao: 'incendio' | 'pane' | 'festival' };
 
 export interface EstadoResumo {
   tick: number;
@@ -24,6 +28,7 @@ export interface EstadoResumo {
   livro: Livro;
   encerrado: boolean;
   progresso: Progresso;
+  eventosLigados: boolean;
 }
 
 /** Detalhes da unidade inspecionada. */
@@ -39,7 +44,7 @@ export interface Dinamico {
   tick: number;
   /** [id, x, y, humor] por pessoa visível. */
   pessoas: Float32Array;
-  /** [uid do poço, andar, carga, capacidade] por carro. */
+  /** [uid do poço, andar, carga, capacidade, pane] por carro. */
   carros: Float32Array;
   pocos: ResumoPoco[];
   semAcesso: number[];
@@ -47,6 +52,10 @@ export interface Dinamico {
   unidades: Float32Array;
   versaoUnidades: number;
   inspecao: Inspecao | null;
+  /** Unidades em chamas. */
+  focos: number[];
+  festival: boolean;
+  ficha: FichaPessoa | null;
 }
 
 export type DaSim =

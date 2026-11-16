@@ -35,6 +35,7 @@ export class Cena {
   private readonly fantasma = new Graphics();
   private readonly dinamicaC = new Container();
   private readonly alertas = new Graphics();
+  private readonly fogos = new Graphics();
   private readonly dinamica: CamadaDinamica;
   private chaveAlertas = '';
   private mundoAtual: Mundo | null = null;
@@ -47,7 +48,7 @@ export class Cena {
     this.mundoBase.addChild(this.terreno, this.estrutura, this.unidades, this.dinamicaC, this.alertas, this.rotulos);
     this.dinamica = new CamadaDinamica(this.dinamicaC);
     this.mundoTopo.addChild(this.grade, this.fantasma);
-    app.stage.addChild(this.ceu, this.mundoBase, this.noite, this.mundoTopo);
+    app.stage.addChild(this.ceu, this.fogos, this.mundoBase, this.noite, this.mundoTopo);
     this.desenharTerreno();
     this.grade.visible = false;
     this.enquadrarInicio();
@@ -222,6 +223,49 @@ export class Cena {
     this.dinamica.desenhar(agora, m, this.camera.escala);
   }
 
+  /** Posição interpolada de uma pessoa visível, em (coluna, andar). */
+  posicaoPessoa(id: number, agora: number): { x: number; y: number } | null {
+    return this.dinamica.posicao(id, agora);
+  }
+
+  /** Pessoa visível sob o ponto da tela (sx, sy), ou 0. */
+  pessoaEm(sx: number, sy: number): number {
+    const { wx, wy } = this.camera.telaParaMundo(sx, sy);
+    const raio = Math.max(1, 6 / this.camera.escala / COL_PX);
+    // y do ponto em andares fracionários (pés da pessoa ficam na base do andar)
+    return this.dinamica.pessoaEm(wx / COL_PX, Math.ceil(-wy / ANDAR_PX) - 1, raio);
+  }
+
+  /** Centraliza a câmera em (coluna, andar). */
+  centralizarEm(x: number, y: number): void {
+    this.camera.centralizar(x * COL_PX, topoDoAndar(y) + ANDAR_PX / 2, this.larguraTela, this.alturaTela);
+    this.aplicarCamera();
+  }
+
+  /** Fogos de artifício no céu (festival de ano novo). */
+  desenharFogos(agora: number, ativo: boolean): void {
+    const g = this.fogos.clear();
+    if (!ativo) return;
+    const w = this.larguraTela;
+    const h = this.alturaTela;
+    const cores = [0xff5a3c, 0xffd27a, 0x6bc9b4, 0xb98ac9, 0x7fa7c9, 0xffffff];
+    for (let k = 0; k < 5; k++) {
+      const ciclo = 1400;
+      const t = agora + k * 280;
+      const n = Math.floor(t / ciclo);
+      const fase = (t % ciclo) / ciclo;
+      const semente = (n * 7919 + k * 104729) % 1000;
+      const cx = ((semente * 37) % 1000) / 1000 * w;
+      const cy = (0.08 + ((semente * 53) % 1000) / 1000 * 0.35) * h;
+      const cor = cores[(n + k) % cores.length]!;
+      const raio = 20 + fase * 60;
+      for (let i = 0; i < 18; i++) {
+        const ang = (i / 18) * Math.PI * 2;
+        g.circle(cx + Math.cos(ang) * raio, cy + Math.sin(ang) * raio + fase * fase * 20, 2).fill({ color: cor, alpha: 1 - fase });
+      }
+    }
+  }
+
   // --------------------------------------------------------------- fantasma
 
   desenharFantasma(plano: Plano | null, hover: Celula | null, destaque: Unidade | null): void {
@@ -274,13 +318,19 @@ function desenharUnidade(g: Graphics, u: Unidade, s: Situacao | undefined): void
   let cor = COR_CATEGORIA[tipo(u.tipo).categoria];
   const vaga = s?.situacao === 0;
   const suja = s?.situacao === 3;
+  const pragas = s?.situacao === 4;
   if (vaga) cor = misturar(cor, COR.vago, 0.6);
   else if (suja) cor = misturar(cor, COR.sujo, 0.55);
+  else if (pragas) cor = misturar(cor, COR.pragas, 0.65);
   const r = retanguloUnidade(u);
   g.rect(r.x, r.y, r.w, r.h).fill(cor);
   g.rect(r.x + 1, r.y + 1, r.w - 2, 3).fill(escurecer(cor, 0.8)); // teto
   g.rect(r.x + 2, r.y + r.h - 12, 3, 12).fill(escurecer(cor, 0.55)); // porta
   g.rect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1).stroke({ width: 1, color: escurecer(cor, 0.6) });
+  if (pragas) {
+    // Bichinhos pelo chão
+    for (let i = 0; i < Math.floor(r.w / 6); i++) g.rect(r.x + 3 + i * 6, r.y + r.h - 3 - (i % 2) * 4, 2, 1).fill(0x1e2129);
+  }
   if (vaga && r.w >= 24) {
     // Placa "vago / à venda"
     const px = r.x + r.w / 2 - 6;

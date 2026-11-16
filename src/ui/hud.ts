@@ -36,6 +36,7 @@ const ROTULO_VELOCIDADE: Record<Velocidade, string> = { 0: '⏸', 1: '1×', 2: '
 export interface AcoesHud {
   velocidade(v: Velocidade): void;
   ferramenta(id: string | null): void;
+  eventos(ligado: boolean): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe?: string, texto?: string): HTMLElementTagNameMap[K] {
@@ -59,6 +60,8 @@ export class Hud {
   private readonly dataEl = el('span', 'valor');
   private readonly horaEl = el('span', 'valor');
   private readonly sandboxEl = el('span', 'sandbox', 'SANDBOX');
+  private readonly eventosEl = el('button', 'botao eventos-sandbox');
+  private eventosLigados = true;
   private readonly botoesVel = new Map<Velocidade, HTMLButtonElement>();
   private readonly botoesPaleta = new Map<string, HTMLButtonElement>();
   private readonly statusEsq = el('span');
@@ -95,6 +98,9 @@ export class Hud {
       vel.append(b);
     }
     this.sandboxEl.hidden = true;
+    this.eventosEl.hidden = true;
+    this.eventosEl.title = 'Eventos especiais (incêndio, pane, pragas, VIP, festival, achado): clique para ligar ou desligar';
+    this.eventosEl.onclick = () => this.acoes.eventos(!this.eventosLigados);
     raiz.append(
       marca,
       bloco('Caixa', this.dinheiroEl),
@@ -104,6 +110,7 @@ export class Hud {
       this.estrelaEl,
       this.progressoEl,
       this.sandboxEl,
+      this.eventosEl,
       el('div', 'espaco'),
       this.dataEl,
       this.horaEl,
@@ -155,6 +162,9 @@ export class Hud {
     this.dataEl.textContent = formatarData(e.tick);
     this.horaEl.textContent = formatarHora(e.tick);
     this.sandboxEl.hidden = !e.sandbox;
+    this.eventosEl.hidden = !e.sandbox;
+    this.eventosLigados = e.eventosLigados;
+    this.eventosEl.textContent = e.eventosLigados ? 'Eventos ✓' : 'Eventos ✗';
     for (const [v, b] of this.botoesVel) b.classList.toggle('ativo', v === e.velocidade);
     this.atualizarTravas(e);
   }
@@ -205,9 +215,19 @@ export class Hud {
     this.statusPlano.className = tipo;
   }
 
-  aviso(texto: string, tipo: 'ok' | 'erro' | 'info' | 'conquista' = 'ok', ms = 2600): void {
+  aviso(
+    texto: string,
+    tipo: 'ok' | 'erro' | 'info' | 'conquista' | 'perigo' = 'ok',
+    ms = 2600,
+    aoClicar?: () => void,
+  ): void {
     const raiz = document.getElementById('avisos')!;
     const a = el('div', `aviso painel ${tipo}`, texto);
+    if (aoClicar) {
+      a.classList.add('clicavel');
+      a.title = 'Clique para ir até lá';
+      a.onclick = aoClicar;
+    }
     raiz.prepend(a);
     while (raiz.children.length > 5) raiz.lastElementChild!.remove();
     setTimeout(() => {

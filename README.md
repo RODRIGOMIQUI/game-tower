@@ -32,6 +32,11 @@ cada ponto) e ajusta o **preço**. Marcador amarelo = satisfação baixa; laranj
 inquilino já recebeu aviso e pode sair no próximo fechamento. Caixa negativo em
 dois fechamentos seguidos = falência (exceto no sandbox).
 
+Clique numa pessoa para ver a ficha dela (nome, destino, estresse, histórico) e
+**Seguir**. Incêndios, panes, pragas, VIP, achados e o festival de ano novo
+aparecem como avisos; os que têm local levam a câmera até lá quando clicados.
+No sandbox, o botão **Eventos** liga/desliga os eventos.
+
 A barra ao lado das estrelas mostra o progresso para o próximo nível; passe o
 mouse para ver cada requisito (população, unidades exigidas, satisfação média,
 inspeção ou inauguração).
@@ -63,7 +68,7 @@ src/
 | 2 | Pessoas e transporte vertical | ✅ |
 | 3 | Inquilinos e economia | ✅ |
 | 4 | Progressão e infraestrutura (MVP) | ✅ |
-| 5 | Eventos | — |
+| 5 | Eventos | ✅ |
 | 6 | UX moderna: overlays, relatórios, save | — |
 | 7 | Arte e áudio finais | — |
 | 8 | Performance e escala | — |

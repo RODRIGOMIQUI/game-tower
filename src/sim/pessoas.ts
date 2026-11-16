@@ -6,8 +6,9 @@
 // removidos quando saem do prédio.
 
 import { tipo } from './dados';
-import type { Mundo, Unidade } from './mundo';
-import { data, MIN_POR_DIA } from './relogio';
+import { nomeAndar, type Mundo, type Unidade } from './mundo';
+import { nomePessoa } from './nomes';
+import { data, formatarHora, MIN_POR_DIA } from './relogio';
 import type { Rng } from './rng';
 import { VEL_CAMINHADA, type Perna, type Roteador } from './rotas';
 import type { Carro, Passageiros, Poco, Transito } from './transito';
@@ -91,7 +92,36 @@ export interface Pessoa {
   evento: boolean;
   /** Maior estresse atingido. */
   pico: number;
+  /** Hóspede VIP (docs/gdd.md §10). */
+  vip: boolean;
+  /** Últimos acontecimentos, para a ficha da pessoa. */
+  historico: string[];
+  /** Já registrou no histórico a espera atual. */
+  reclamou: boolean;
 }
+
+/** Dados da ficha da pessoa (docs/gdd.md §5.4). */
+export interface FichaPessoa {
+  id: number;
+  nome: string;
+  tipo: TipoPessoa;
+  vip: boolean;
+  vinculo: string;
+  situacao: string;
+  estresse: number;
+  historico: string[];
+  /** Posição atual (coluna, andar), ou null se estiver fora do prédio. */
+  posicao: { x: number; y: number } | null;
+}
+
+const NOME_TIPO: Record<TipoPessoa, string> = {
+  funcionario: 'Funcionário',
+  morador: 'Morador',
+  hospede: 'Hóspede',
+  visitante: 'Visitante',
+  inspetor: 'Inspetor',
+};
+const HISTORICO_MAX = 6;
 
 export interface Entrada {
   x: number;
@@ -145,6 +175,8 @@ export class Populacao implements Passageiros {
   private readonly lotacao = new Map<number, number>();
   private readonly vagasOcupadas = new Map<number, number>();
   private usosEstacionamento = 0;
+  /** Unidades fechadas (em chamas): ninguém entra para consumir. */
+  readonly bloqueadas = new Set<number>();
   private proximoId = 1;
   private tickAtual = 0;
   desistenciasHoje = 0;
@@ -191,7 +223,7 @@ export class Populacao implements Passageiros {
   }
 
   /** Hóspedes de um quarto: chegam no minuto `chegada` de hoje e saem amanhã de manhã. */
-  hospedar(quarto: Unidade, n: number, chegada: number, tick: number): void {
+  hospedar(quarto: Unidade, n: number, chegada: number, tick: number, vip = false): void {
     const ids: number[] = [];
     const jantar = 1170 + this.amb.rng.inteiro(0, 60); // 19:30–20:30
     for (let i = 0; i < n; i++) {
@@ -199,6 +231,7 @@ export class Populacao implements Passageiros {
       p.diaChegada = data(tick).diaTotal;
       p.agenda = [{ minuto: chegada, acao: 'ir_casa' }];
       if (chegada < jantar) p.agenda.push({ minuto: jantar, acao: 'comer' });
+      if (vip && i === 0) p.vip = true;
       ids.push(p.id);
     }
     this.porUnidade.set(quarto.uid, ids);
@@ -234,6 +267,7 @@ export class Populacao implements Passageiros {
       rota: null, perna: 0, destino: null, local: 0, agenda: [], proximo: 0, ate: 0,
       poco: 0, carro: 0, desde: 0, andarDestino: 0, escadaDe: 0, estresse: 0,
       diaChegada: data(tick).diaTotal, chegou: false, vaga: 0, roteiro: [], evento: false, pico: 0,
+      vip: false, historico: [], reclamou: false,
     };
     this.pessoas.set(p.id, p);
     return p;
@@ -352,8 +386,11 @@ export class Populacao implements Passageiros {
           const espera = tick - p.desde;
           const tol = PACIENCIA[p.tipo];
           if (espera > tol) {
-            p.estresse = Math.min(100, p.estresse + ESTRESSE_POR_TICK);
-            if (p.estresse > p.pico) p.pico = p.estresse;
+            this.estressar(p, ESTRESSE_POR_TICK);
+            if (!p.reclamou) {
+              p.reclamou = true;
+              this.registrar(p, `irritado: mais de ${tol} min esperando elevador no andar ${nomeAndar(p.y)}`);
+            }
           }
           if (espera > tol * 2) this.desistir(p);
           break;
@@ -394,7 +431,7 @@ export class Populacao implements Passageiros {
   /** Vai a uma unidade de consumo se houver lugar e rota. */
   private irAoLugar(p: Pessoa, uid: number): boolean {
     const u = this.amb.mundo.unidades.get(uid);
-    if (!u) return false;
+    if (!u || this.bloqueadas.has(uid)) return false;
     const ocup = this.lotacao.get(uid) ?? 0;
     if (ocup >= tipo(u.tipo).capacidade) return false;
     if (!this.irPara(p, { tipo: 'visita', uid })) return false;
@@ -579,6 +616,10 @@ export class Populacao implements Passageiros {
     p.rota = null;
     p.chegou = true;
     p.estresse = Math.max(0, p.estresse - 5);
+    const txt = d?.tipo === 'casa'
+      ? { funcionario: 'chegou ao trabalho', morador: 'chegou em casa', hospede: 'chegou ao quarto' }[p.tipo as 'funcionario'] ?? 'chegou'
+      : this.textoChegada(d);
+    this.registrar(p, txt);
     if (!d || d.tipo === 'fora') {
       p.estado = Estado.Fora;
       p.local = 0;
@@ -598,6 +639,7 @@ export class Populacao implements Passageiros {
   }
 
   private desistir(p: Pessoa): void {
+    this.registrar(p, 'desistiu de esperar e foi embora');
     this.sairDoTransporte(p);
     this.desistenciasHoje++;
     p.estresse = Math.min(100, p.estresse + 10);
@@ -672,6 +714,8 @@ export class Populacao implements Passageiros {
     const p = this.pessoas.get(id);
     if (!p) return;
     poco.registrarEspera(tick - p.desde);
+    if (tick - p.desde >= 10) this.registrar(p, `esperou ${tick - p.desde} min pelo elevador no andar ${nomeAndar(p.y)}`);
+    p.reclamou = false;
     p.estado = Estado.NoElevador;
     p.carro = carro.id;
   }
@@ -683,6 +727,86 @@ export class Populacao implements Passageiros {
     p.x = poco.xCentro;
     p.carro = 0;
     this.proximaPerna(p);
+  }
+
+  // ------------------------------------------------- eventos especiais
+
+  estressar(p: Pessoa, v: number): void {
+    p.estresse = Math.min(100, p.estresse + v);
+    if (p.estresse > p.pico) p.pico = p.estresse;
+  }
+
+  /** Estressa quem está dentro dos carros indicados (pane de elevador). */
+  estressarPassageiros(ids: number[], v: number): void {
+    for (const id of ids) {
+      const p = this.pessoas.get(id);
+      if (p) this.estressar(p, v);
+    }
+  }
+
+  /** Quem está nas unidades indicadas sai do prédio às pressas (incêndio). */
+  evacuar(uids: Set<number>): void {
+    for (const p of [...this.pessoas.values()]) {
+      if (p.estado !== Estado.NaUnidade || !uids.has(p.local)) continue;
+      this.registrar(p, 'saiu às pressas: incêndio!');
+      this.estressar(p, 20);
+      p.ate = 0;
+      this.irPara(p, { tipo: 'fora' });
+    }
+  }
+
+  private registrar(p: Pessoa, texto: string): void {
+    p.historico.push(`${formatarHora(this.tickAtual)} ${texto}`);
+    if (p.historico.length > HISTORICO_MAX) p.historico.shift();
+  }
+
+  private nomeUnidade(uid: number): string {
+    const u = this.amb.mundo.unidades.get(uid);
+    return u ? `${tipo(u.tipo).nome} (andar ${nomeAndar(u.y)})` : 'unidade demolida';
+  }
+
+  private textoChegada(d: Destino | null): string {
+    if (!d || d.tipo === 'fora') return 'saiu do prédio';
+    if (d.tipo === 'visita') return `chegou a ${this.nomeUnidade(d.uid)}`;
+    return '';
+  }
+
+  ficha(id: number): FichaPessoa | null {
+    const p = this.pessoas.get(id);
+    if (!p) return null;
+    const vinculo = p.casa ? this.nomeUnidade(p.casa) : p.alvo ? `visita a ${this.nomeUnidade(p.alvo)}` : '—';
+    let situacao = '';
+    let posicao: { x: number; y: number } | null = { x: p.x, y: p.y };
+    const destino =
+      p.destino?.tipo === 'fora' ? 'saída' : p.destino?.tipo === 'visita' ? this.nomeUnidade(p.destino.uid) : p.destino ? this.nomeUnidade(p.casa) : '';
+    switch (p.estado) {
+      case Estado.Fora:
+        situacao = 'Fora do prédio';
+        posicao = null;
+        break;
+      case Estado.NaUnidade: {
+        situacao = `Em ${this.nomeUnidade(p.local)}`;
+        const u = this.amb.mundo.unidades.get(p.local);
+        posicao = u ? { x: centro(u), y: u.y } : null;
+        break;
+      }
+      case Estado.Esperando:
+        situacao = `Esperando elevador há ${this.tickAtual - p.desde} min → ${destino}`;
+        break;
+      case Estado.NoElevador: {
+        situacao = `No elevador → ${destino}`;
+        const poco = this.amb.transito.pocos.get(p.poco);
+        const carro = poco?.carros.find((c) => c.id === p.carro);
+        posicao = poco && carro ? { x: poco.xCentro, y: carro.pos } : posicao;
+        break;
+      }
+      default:
+        situacao = `A caminho de ${destino}`;
+    }
+    return {
+      id: p.id, nome: nomePessoa(p.id), tipo: p.tipo, vip: p.vip, vinculo, situacao,
+      estresse: p.estresse, historico: [...p.historico].reverse(), posicao,
+    };
   }
 
   // ------------------------------------------------------------ consulta
@@ -721,7 +845,7 @@ export class Populacao implements Passageiros {
         const t = Math.min(1, (this.tickAtual - p.desde) / perna.tempo);
         y = perna.de + (perna.para - perna.de) * t;
       } else if (p.estado !== Estado.Andando && p.estado !== Estado.Esperando) continue;
-      const humor = p.estresse >= ESTRESSE_FURIOSO ? 2 : p.estresse >= ESTRESSE_IRRITADO ? 1 : 0;
+      const humor = p.vip ? 3 : p.estresse >= ESTRESSE_FURIOSO ? 2 : p.estresse >= ESTRESSE_IRRITADO ? 1 : 0;
       r.push(p.id, p.x, y, humor);
     }
     return new Float32Array(r);

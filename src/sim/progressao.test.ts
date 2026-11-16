@@ -201,9 +201,9 @@ describe('entradas e serviços', () => {
     const j = carreira();
     torre(j);
     const e = [...j.inquilinos.estados.values()].find((e) => e.tipo === 'escritorio')!;
-    j.inquilinos.fimDoDia(j.populacao, true);
+    j.inquilinos.fimDoDia(j.populacao, true, 0);
     expect(e.componentes.sujeira).toBe(15);
-    j.inquilinos.fimDoDia(j.populacao, false);
+    j.inquilinos.fimDoDia(j.populacao, false, 0);
     expect(e.componentes.sujeira).toBe(0);
   });
 });

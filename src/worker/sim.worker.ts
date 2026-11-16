@@ -18,6 +18,7 @@ let versaoEnviada = -1;
 let tickEnviado = -1;
 let dinheiroEnviado = NaN;
 let inspecionado = 0;
+let pessoaInspecionada = 0;
 
 function enviar(msg: DaSim, transferir: Transferable[] = []): void {
   escopo.postMessage(msg, transferir);
@@ -46,6 +47,7 @@ function publicar(forcar = false): void {
         livro: jogo.livro,
         encerrado: jogo.encerrado,
         progresso: jogo.progresso(),
+        eventosLigados: jogo.eventos.ligado,
       },
     });
     const pessoas = jogo.populacao.visiveis();
@@ -70,6 +72,9 @@ function publicar(forcar = false): void {
               lotacao: jogo.populacao.lotacaoDe(inspecionado),
             }
           : null,
+        focos: [...jogo.eventos.focos.keys()],
+        festival: jogo.eventos.festival,
+        ficha: pessoaInspecionada ? jogo.populacao.ficha(pessoaInspecionada) : null,
       },
       [pessoas.buffer, carros.buffer, unidades.buffer],
     );
@@ -88,6 +93,12 @@ escopo.onmessage = (e) => {
     publicar(true);
   } else if (msg.tipo === 'inspecionar') {
     inspecionado = msg.uid;
+    publicar(true);
+  } else if (msg.tipo === 'depurar' && import.meta.env.DEV) {
+    depurar(jogo, msg.acao);
+    publicar(true);
+  } else if (msg.tipo === 'inspecionarPessoa') {
+    pessoaInspecionada = msg.id;
     publicar(true);
   } else if (msg.tipo === 'velocidade') {
     velocidade = msg.v;
@@ -111,3 +122,22 @@ setInterval(() => {
   }
   publicar();
 }, 50);
+
+/** Dispara eventos à força (só em desenvolvimento). */
+function depurar(j: Jogo, acao: 'incendio' | 'pane' | 'festival'): void {
+  const ctx = (j as unknown as { contextoEventos(): Parameters<Jogo['eventos']['iniciarIncendio']>[1] }).contextoEventos();
+  if (acao === 'incendio') {
+    const ev = j.eventos.iniciarIncendio(j.tick, ctx);
+    if (ev) enviar({ tipo: 'eventos', eventos: [ev] });
+  } else if (acao === 'pane') {
+    const poco = [...j.transito.pocos.values()][0];
+    const carro = poco?.carros[0];
+    if (!poco || !carro) return;
+    carro.pane = 120;
+    (j.eventos as unknown as { panes: Map<number, number> }).panes.set(carro.id, poco.uid);
+    enviar({ tipo: 'eventos', eventos: [{ tipo: 'pane', uid: poco.uid, andar: carro.pos }] });
+  } else {
+    j.eventos.festival = true;
+    enviar({ tipo: 'eventos', eventos: [{ tipo: 'festival' }] });
+  }
+}
