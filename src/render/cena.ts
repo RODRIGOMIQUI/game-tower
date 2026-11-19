@@ -199,6 +199,10 @@ export class Cena {
     }
 
     this.mundoAtual = m;
+    // Mundo novo (construção ou save carregado): alertas e situações chegam de
+    // novo no próximo quadro. As chaves deles podem repetir as de outro jogo.
+    this.chaveAlertas = '';
+    this.versaoSituacoes = -1;
     this.redesenharUnidades();
   }
 
@@ -282,8 +286,12 @@ export class Cena {
     }
   }
 
-  /** Sprite de cada unidade (por uid) e a variante que ele mostra. */
-  private readonly spritesPorUid = new Map<number, { sprite: Sprite; variante: Variante; uid: number }>();
+  /**
+   * Sprite de cada unidade (por uid), a variante que ele mostra e a unidade
+   * desenhada (tipo e retângulo). Um save carregado pode reaproveitar o uid
+   * para outra unidade: aí a chave muda e o sprite é refeito.
+   */
+  private readonly spritesPorUid = new Map<number, { sprite: Sprite; variante: Variante; uid: number; chave: string }>();
 
   /**
    * Prédio mudou: sincroniza sprites (cria/remove só o necessário) e redesenha
@@ -295,7 +303,8 @@ export class Cena {
     if (mundoMudou) {
       const gu = this.unidades.clear();
       for (const [uid, reg] of this.spritesPorUid) {
-        if (m.unidades.has(uid)) continue;
+        const u = m.unidades.get(uid);
+        if (u && chaveUnidade(u) === reg.chave) continue;
         reg.sprite.destroy();
         this.spritesPorUid.delete(uid);
       }
@@ -317,7 +326,7 @@ export class Cena {
         sprite.position.set(r.x, r.y);
         sprite.cullable = true;
         this.sprites.addChild(sprite);
-        reg = { sprite, variante, uid: u.uid };
+        reg = { sprite, variante, uid: u.uid, chave: chaveUnidade(u) };
         this.spritesPorUid.set(u.uid, reg);
       } else if (reg.variante !== variante) {
         reg.sprite.texture = this.arte.unidade(u.tipo, u.largura, u.altura, variante, u.uid);
@@ -754,4 +763,9 @@ function desenharGrand(r: Ret, x0: number, x1: number, y: number, topo: number, 
       r(cx + 18, topo + 14, 2, 4, 0xfac775);
     }
   }
+}
+
+/** Identifica o que um sprite desenha: tipo, posição e tamanho da unidade. */
+function chaveUnidade(u: Unidade): string {
+  return `${u.tipo}:${u.x}:${u.y}:${u.largura}:${u.altura}`;
 }
