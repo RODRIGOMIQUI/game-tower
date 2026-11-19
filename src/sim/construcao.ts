@@ -12,6 +12,7 @@ import {
   type CodigoEstrutura,
   type Mundo,
 } from './mundo';
+import { efeitosLobby, ehLobby, ehLobbyDuplo, ehMezanino, LOBBY_MIN_COLUNAS } from './lobbies';
 
 export interface Contexto {
   dinheiro: number;
@@ -38,6 +39,8 @@ export interface ItemPlano {
   motivo?: string;
   /** Demolição de unidade. */
   uid?: number;
+  /** Estrutura que havia na célula antes de construir (o desfazer a restaura). */
+  anterior?: number;
 }
 
 export interface Plano {
@@ -87,6 +90,9 @@ export function planejarConstrucao(
   if (ehElevador(tipoId) && ctx.pocosRestantes !== undefined && ctx.pocosRestantes <= 0) {
     return fecharPlano('construir', [], 'Limite de poços do cenário');
   }
+  if (tipoId === 'coroa' && !ctx.ignorarEstrela && !efeitosLobby(m).grand) {
+    return fecharPlano('construir', [], `Requer um Grand lobby de ${LOBBY_MIN_COLUNAS} colunas no térreo`);
+  }
   const plano = ehEstrutura(tipoId)
     ? planejarEstrutura(m, t, x0, y0, x1, y1, ctx)
     : ehElevador(tipoId)
@@ -125,14 +131,17 @@ function planejarElevador(m: Mundo, t: TipoUnidade, x: number, y0: number, y1: n
   return fecharPlano('construir', [item]);
 }
 
-/** Verifica terreno, piso e espaço livre num retângulo. `aceitaLobby` vale para transporte. */
+/**
+ * Verifica terreno, piso e espaço livre num retângulo. `aceitaLobby` vale para
+ * transporte; 'mezanino' aceita só o 1º andar do átrio (comida e lojas).
+ */
 function validarCelulasLivres(
   m: Mundo,
   x: number,
   y: number,
   largura: number,
   altura: number,
-  aceitaLobby: boolean,
+  aceitaLobby: boolean | 'mezanino',
 ): string | undefined {
   const topo = y + altura - 1;
   if (!dentro(x, y) || !dentro(x + largura - 1, topo)) return 'Fora do terreno';
@@ -140,7 +149,9 @@ function validarCelulasLivres(
     for (let xx = x; xx < x + largura; xx++) {
       const e = m.est(xx, yy);
       if (e === Est.Vazio) return 'Precisa de piso';
-      if (e === Est.Lobby && !aceitaLobby) return 'Não pode ficar no lobby';
+      if (ehLobby(e) && aceitaLobby !== true && !(aceitaLobby === 'mezanino' && ehMezanino(m, xx, yy))) {
+        return 'Não pode ficar no lobby';
+      }
       if (m.uidEm(xx, yy)) return 'Espaço ocupado';
     }
   }
@@ -159,6 +170,7 @@ function planejarEstrutura(
   const codigo = ESTRUTURA_POR_TIPO[t.id]!;
   const [xa, xb] = intervalo(x0, x1);
   const [ya, yb] = intervalo(y0, y1);
+  if (ehLobbyDuplo(codigo)) return planejarLobbyDuplo(m, t, codigo, xa, xb, ya, yb, ctx);
   // Do chão para fora: acima sobe, subsolo desce. Assim cada célula pode se
   // apoiar em outra planejada antes dela.
   const ys: number[] = [];
@@ -178,7 +190,7 @@ function planejarEstrutura(
       if (atual === codigo) continue; // já existe: ignora sem erro
       const motivo = validarCelula(m, t.id, codigo, x, y, atual, temEstrutura);
       const item: ItemPlano = {
-        tipo: t.id, x, y, largura: 1, altura: 1, estrutura: true, custo: t.custo, ok: !motivo, motivo,
+        tipo: t.id, x, y, largura: 1, altura: 1, estrutura: true, custo: t.custo, ok: !motivo, motivo, anterior: atual,
       };
       if (item.ok && gasto + t.custo > ctx.dinheiro) {
         item.ok = false;
@@ -189,7 +201,56 @@ function planejarEstrutura(
         planejadas.add(idx(x, y));
       }
       itens.push(item);
+      // Lobby simples no lugar de átrio/grand: o 1º andar volta a ser piso.
+      if (item.ok && y === 0 && ehLobbyDuplo(atual)) {
+        itens.push({ tipo: 'piso', x, y: 1, largura: 1, altura: 1, estrutura: true, custo: 0, ok: true, anterior: m.est(x, 1) });
+      }
     }
+  }
+  return fecharPlano('construir', itens);
+}
+
+/**
+ * Átrio e grand lobby: cada coluna leva a célula do térreo e a do 1º andar.
+ * O custo fica na célula do térreo.
+ */
+function planejarLobbyDuplo(
+  m: Mundo,
+  t: TipoUnidade,
+  codigo: CodigoEstrutura,
+  xa: number,
+  xb: number,
+  ya: number,
+  yb: number,
+  ctx: Contexto,
+): Plano {
+  if (ya > 0 || yb < 0) return fecharPlano('construir', [], `${t.nome} só no térreo`);
+  const itens: ItemPlano[] = [];
+  let gasto = 0;
+  for (let x = xa; x <= xb; x++) {
+    if (!dentro(x, 0)) continue;
+    const baixo = m.est(x, 0);
+    const cima = m.est(x, 1);
+    if (baixo === codigo && cima === codigo) continue;
+    let motivo: string | undefined;
+    if (baixo !== Est.Vazio && baixo !== Est.Piso && !ehLobby(baixo)) motivo = 'Já construído';
+    else if (cima !== Est.Vazio && cima !== Est.Piso && !ehLobbyDuplo(cima)) motivo = 'Já construído no 1º andar';
+    else {
+      for (const y of [0, 1]) {
+        const u = m.unidadeEm(x, y);
+        if (!u) continue;
+        const cat = tipo(u.tipo).categoria;
+        const mezanino = y === 1 && codigo === Est.Atrio && (cat === 'comida' || cat === 'comercio');
+        if (cat !== 'transito' && !mezanino) motivo = y === 0 ? 'Espaço ocupado' : 'Libere o 1º andar antes';
+      }
+    }
+    if (!motivo && gasto + t.custo > ctx.dinheiro) motivo = 'Dinheiro insuficiente';
+    if (!motivo) gasto += t.custo;
+    const ok = !motivo;
+    itens.push(
+      { tipo: t.id, x, y: 0, largura: 1, altura: 1, estrutura: true, custo: t.custo, ok, motivo, anterior: baixo },
+      { tipo: t.id, x, y: 1, largura: 1, altura: 1, estrutura: true, custo: 0, ok, motivo, anterior: cima },
+    );
   }
   return fecharPlano('construir', itens);
 }
@@ -217,11 +278,14 @@ function validarCelula(
       if (y > 0 && !temEstrutura(x, y - 1)) return 'Sem apoio no andar de baixo';
       return undefined;
     case Est.Lobby:
+    case Est.LobbyCorp:
       if (id === 'sky_lobby') {
         if (y < ANDAR_MIN_SKY_LOBBY) return 'Sky lobby só a partir do 15º andar';
         if (atual === Est.Vazio && !temEstrutura(x, y - 1)) return 'Sem apoio no andar de baixo';
+        if (atual !== Est.Vazio && atual !== Est.Piso) return 'Já construído';
       } else if (y !== 0) return 'Lobby só no térreo';
-      if (atual !== Est.Vazio && atual !== Est.Piso) return 'Já construído';
+      // No térreo, uma variante de lobby pode trocar outra.
+      else if (atual !== Est.Vazio && atual !== Est.Piso && !ehLobby(atual)) return 'Já construído';
       // Elevadores e escadas podem ficar sobre lobby; outras unidades não.
       if (m.uidEm(x, y) && tipo(m.unidadeEm(x, y)!.tipo).categoria !== 'transito') return 'Espaço ocupado';
       return undefined;
@@ -301,7 +365,8 @@ function validarUnidade(m: Mundo, t: TipoUnidade, x: number, y: number): string 
       break;
   }
   const transito = t.categoria === 'transito';
-  const motivo = validarCelulasLivres(m, x, y, l, a, transito);
+  const consumo = t.categoria === 'comida' || t.categoria === 'comercio';
+  const motivo = validarCelulasLivres(m, x, y, l, a, transito || (consumo ? 'mezanino' : false));
   if (motivo) return motivo;
   // Escadas ligam o andar y ao y+1: precisa haver piso em cima.
   if (transito) {
@@ -349,23 +414,37 @@ export function planejarDemolicao(
 
   // Estrutura: de fora para o chão, para que uma célula possa ser removida
   // junto com a que ela sustenta.
-  const ys: number[] = [];
-  for (let y = ya; y <= yb; y++) ys.push(y);
-  ys.sort((a, b) => distanciaDoChao(b) - distanciaDoChao(a));
+  // Átrio e grand lobby saem inteiros: a outra metade entra junto.
+  const celulas = new Map<number, [number, number]>();
+  for (let y = ya; y <= yb; y++) {
+    for (let x = xa; x <= xb; x++) {
+      if (!dentro(x, y) || m.est(x, y) === Est.Vazio) continue;
+      celulas.set(idx(x, y), [x, y]);
+      if ((y === 0 || y === 1) && ehLobbyDuplo(m.est(x, y))) celulas.set(idx(x, 1 - y), [x, 1 - y]);
+    }
+  }
+  const ordem = [...celulas.values()].sort(([, a], [, b]) => distanciaDoChao(b) - distanciaDoChao(a));
   const removidas = new Set<number>();
   const itens: ItemPlano[] = [];
-  for (const y of ys) {
-    for (let x = xa; x <= xb; x++) {
-      const e = m.est(x, y);
-      if (e === Est.Vazio) continue;
-      const dep = y >= 0 ? y + 1 : y - 1; // célula que esta sustenta
-      const sustenta = m.est(x, dep) !== Est.Vazio && !removidas.has(idx(x, dep));
-      const item: ItemPlano = {
-        tipo: tipoDaEstrutura(e), x, y, largura: 1, altura: 1, estrutura: true, custo: 0,
-        ok: !sustenta, motivo: sustenta ? (y >= 0 ? 'Sustenta o andar de cima' : 'Há escavação abaixo') : undefined,
-      };
-      if (item.ok) removidas.add(idx(x, y));
-      itens.push(item);
+  for (const [x, y] of ordem) {
+    const e = m.est(x, y);
+    const dep = y >= 0 ? y + 1 : y - 1; // célula que esta sustenta
+    const sustenta = m.est(x, dep) !== Est.Vazio && !removidas.has(idx(x, dep));
+    const motivo = sustenta
+      ? y >= 0 ? 'Sustenta o andar de cima' : 'Há escavação abaixo'
+      : m.uidEm(x, y) ? 'Há algo construído no átrio' : undefined;
+    const item: ItemPlano = {
+      tipo: tipoDaEstrutura(e), x, y, largura: 1, altura: 1, estrutura: true, custo: 0, ok: !motivo, motivo,
+    };
+    if (item.ok) removidas.add(idx(x, y));
+    itens.push(item);
+  }
+  // Metade de um lobby duplo não pode sair sozinha.
+  for (const it of itens) {
+    if (!it.ok || (it.y !== 0 && it.y !== 1) || !ehLobbyDuplo(m.est(it.x, it.y))) continue;
+    if (!removidas.has(idx(it.x, 1 - it.y))) {
+      it.ok = false;
+      it.motivo = 'Sustenta o andar de cima';
     }
   }
   return fecharPlano('demolir', itens);
@@ -396,9 +475,10 @@ export function executarPlano(m: Mundo, plano: Plano): void {
  */
 export function desfazerConstrucao(m: Mundo, itens: ItemPlano[], uids: number[]): string | undefined {
   const celulas = itens.filter((i) => i.estrutura);
-  const removidas = new Set(celulas.map((c) => idx(c.x, c.y)));
+  const removidas = new Set(celulas.filter((c) => !c.anterior).map((c) => idx(c.x, c.y)));
   const unidades = new Set(uids.filter((u) => m.unidades.has(u)));
   for (const c of celulas) {
+    if (c.anterior) continue; // volta a ser o que era (ex.: lobby sobre piso)
     const uid = m.uidEm(c.x, c.y);
     if (uid && !unidades.has(uid)) return 'Há outra coisa construída ali; desfaça ou demola antes';
     const dep = c.y >= 0 ? c.y + 1 : c.y - 1;
@@ -407,7 +487,7 @@ export function desfazerConstrucao(m: Mundo, itens: ItemPlano[], uids: number[])
     }
   }
   for (const uid of unidades) m.removerUnidade(uid);
-  for (const c of celulas) m.setEst(c.x, c.y, Est.Vazio);
+  for (const c of celulas) m.setEst(c.x, c.y, (c.anterior ?? Est.Vazio) as CodigoEstrutura);
   return undefined;
 }
 

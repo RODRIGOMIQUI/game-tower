@@ -22,6 +22,9 @@ const COR_INTERIOR: Record<number, number> = {
   [Est.Piso]: COR.interiorVazio,
   [Est.Lobby]: COR.lobby,
   [Est.Escavado]: COR.escavado,
+  [Est.LobbyCorp]: COR.lobbyCorp,
+  [Est.Atrio]: COR.atrio,
+  [Est.Grand]: COR.grand,
 };
 
 export class Cena {
@@ -574,6 +577,8 @@ function desenharTrecho(g: Graphics, m: Mundo, c: number, x0: number, x1: number
   const w = (x1 - x0) * COL_PX;
   const r = (x: number, yy: number, ww: number, hh: number, cor: number, alpha = 1) =>
     g.rect(x, yy, ww, hh).fill({ color: cor, alpha });
+  // Portas só onde o térreo acaba (entradas de verdade), não entre variantes.
+  const pontas: Pontas = [y === 0 && m.est(x0 - 1, 0) === Est.Vazio, y === 0 && m.est(x1, 0) === Est.Vazio];
   if (c === Est.Lobby) {
     r(px, topo, w, INTERIOR_PX, COR.lobby);
     r(px, topo, w, 3, escurecer(COR.lobby, 0.85));
@@ -584,12 +589,19 @@ function desenharTrecho(g: Graphics, m: Mundo, c: number, x0: number, x1: number
     }
     if (y === 0) {
       // Portas de vidro nas pontas (entradas)
-      for (const xp of [px + 1, px + w - 11]) {
+      for (const xp of [pontas[0] ? px + 1 : NaN, pontas[1] ? px + w - 11 : NaN]) {
+        if (Number.isNaN(xp)) continue;
         r(xp, topo + 8, 10, INTERIOR_PX - 8, COR.estruturaClaro);
         r(xp + 1, topo + 9, 8, INTERIOR_PX - 9, 0xa9d8f0, 0.85);
         r(xp + 5, topo + 9, 1, INTERIOR_PX - 9, COR.estruturaClaro);
       }
     }
+  } else if (c === Est.LobbyCorp) {
+    desenharCorporativo(r, x0, x1, topo, px, w, pontas);
+  } else if (c === Est.Atrio) {
+    desenharAtrio(r, x0, x1, y, topo, px, w, pontas);
+  } else if (c === Est.Grand) {
+    desenharGrand(r, x0, x1, y, topo, px, w, pontas);
   } else if (c === Est.Escavado) {
     r(px, topo, w, INTERIOR_PX, COR.escavado);
     r(px, topo + 4, w, 2, escurecer(COR.escavado, 0.75)); // cano
@@ -604,9 +616,12 @@ function desenharTrecho(g: Graphics, m: Mundo, c: number, x0: number, x1: number
       r(xc * COL_PX + 3, topo + 8, 6, 12, 0xc8e0ee);
     }
   }
-  // Laje e pilares das pontas (fachada)
-  r(px, topo + INTERIOR_PX, w, LAJE_PX, COR.estrutura);
-  r(px, topo + INTERIOR_PX, w, 1, COR.estruturaClaro);
+  // Laje e pilares das pontas (fachada). O grand lobby é um salão só: sem laje no meio.
+  if (c === Est.Grand && y === 1) r(px, topo + INTERIOR_PX, w, LAJE_PX, COR.grand);
+  else {
+    r(px, topo + INTERIOR_PX, w, LAJE_PX, COR.estrutura);
+    r(px, topo + INTERIOR_PX, w, 1, COR.estruturaClaro);
+  }
   r(px, topo, 2, INTERIOR_PX, COR.estrutura);
   r(px + w - 2, topo, 2, INTERIOR_PX, COR.estrutura);
   // Cobertura: onde não há andar acima, uma platibanda
@@ -622,6 +637,121 @@ function desenharTrecho(g: Graphics, m: Mundo, c: number, x0: number, x1: number
       r(xc * COL_PX, topo - 4, (f - xc) * COL_PX, 4, COR.estrutura);
       r(xc * COL_PX, topo - 4, (f - xc) * COL_PX, 1, COR.estruturaClaro);
       xc = f;
+    }
+  }
+}
+
+type Ret = (x: number, y: number, w: number, h: number, cor: number, alpha?: number) => unknown;
+/** Se o trecho começa / termina numa ponta do térreo. */
+type Pontas = [boolean, boolean];
+
+/** Portas de vidro nas pontas do trecho do térreo (entradas). */
+function portas(r: Ret, pontas: Pontas, px: number, w: number, topo: number, altura: number, largura = 10): void {
+  for (const [i, xp] of [px + 1, px + w - largura - 1].entries()) {
+    if (!pontas[i]) continue;
+    r(xp, topo + INTERIOR_PX - altura, largura, altura, COR.estruturaClaro);
+    r(xp + 1, topo + INTERIOR_PX - altura + 1, largura - 2, altura - 1, 0xa9d8f0, 0.85);
+    r(xp + largura / 2, topo + INTERIOR_PX - altura + 1, 1, altura - 1, COR.estruturaClaro);
+  }
+}
+
+/** Centros (coluna) de enfeites a cada `passo` colunas, longe das portas. */
+function enfeites(x0: number, x1: number, passo: number): number[] {
+  const r: number[] = [];
+  for (let xc = x0 + Math.floor(passo / 2); xc < x1 - 3; xc += passo) if (xc > x0 + 3) r.push(xc);
+  // Trecho curto: um enfeite no meio.
+  if (!r.length && x1 - x0 >= 10) r.push(Math.floor((x0 + x1) / 2));
+  return r;
+}
+
+/** Lobby corporativo: piso escuro, balcão de recepção e catracas perto das portas. */
+function desenharCorporativo(r: Ret, x0: number, x1: number, topo: number, px: number, w: number, pontas: Pontas): void {
+  r(px, topo, w, INTERIOR_PX, COR.lobbyCorp);
+  r(px, topo, w, 3, escurecer(COR.lobbyCorp, 0.7));
+  r(px, topo + INTERIOR_PX - 4, w, 4, 0x3d4148);
+  for (const xc of enfeites(x0, x1, 30)) {
+    const bx = xc * COL_PX - 24;
+    r(bx, topo + INTERIOR_PX - 15, 48, 11, 0x5a3e2b);
+    r(bx, topo + INTERIOR_PX - 15, 48, 2, 0xc8a97e);
+    r(bx + 12, topo + 5, 24, 5, 0x2c2c2a); // letreiro da empresa
+    r(bx + 14, topo + 7, 20, 1, 0xd8dbe2);
+  }
+  // Catracas logo depois de cada porta.
+  if (x1 - x0 >= 8) {
+    for (const [i, base] of [px + 14, px + w - 30].entries()) {
+      if (!pontas[i]) continue;
+      for (let i = 0; i < 3; i++) r(base + i * 6, topo + INTERIOR_PX - 12, 2, 8, 0xc9ccd1);
+    }
+  }
+  portas(r, pontas, px, w, topo, INTERIOR_PX - 6, 12);
+}
+
+/** Átrio: pé-direito duplo, árvores e mezanino com guarda-corpo no 1º andar. */
+function desenharAtrio(r: Ret, x0: number, x1: number, y: number, topo: number, px: number, w: number, pontas: Pontas): void {
+  r(px, topo, w, INTERIOR_PX, COR.atrio);
+  const arvores = enfeites(x0, x1, 24);
+  if (y === 0) {
+    r(px, topo + INTERIOR_PX - 3, w, 3, 0xcfc6b2);
+    for (const xc of arvores) {
+      const cx = xc * COL_PX;
+      r(cx - 2, topo + 2, 4, INTERIOR_PX - 7, 0x6b4a2e);
+      r(cx - 10, topo + INTERIOR_PX - 5, 20, 3, 0x8c8270); // canteiro
+      r(cx - 14, topo, 28, 10, 0x3b6d11);
+      r(cx - 10, topo + 8, 8, 6, 0x639922);
+      r(cx + 3, topo + 6, 8, 6, 0x639922);
+    }
+    portas(r, pontas, px, w, topo, INTERIOR_PX - 8);
+  } else {
+    r(px, topo, w, 3, escurecer(COR.atrio, 0.8));
+    for (let xc = x0 + 1; xc + 3 < x1; xc += 5) r(xc * COL_PX + 2, topo + 5, 30, 14, 0xcfe6f2); // claraboias
+    for (const xc of arvores) {
+      const cx = xc * COL_PX;
+      r(cx - 16, topo + 10, 32, INTERIOR_PX - 10, 0x3b6d11);
+      r(cx - 20, topo + 18, 12, 10, 0x639922);
+      r(cx + 8, topo + 16, 12, 10, 0x639922);
+    }
+    // Guarda-corpo do mezanino.
+    r(px, topo + INTERIOR_PX - 8, w, 1, 0x5f5e5a);
+    for (let xx = px + 4; xx < px + w; xx += 8) r(xx, topo + INTERIOR_PX - 8, 1, 8, 0x5f5e5a);
+  }
+}
+
+/** Grand lobby: mármore escuro, colunas douradas, lustre, fonte e tapete vermelho. */
+function desenharGrand(r: Ret, x0: number, x1: number, y: number, topo: number, px: number, w: number, pontas: Pontas): void {
+  r(px, topo, w, INTERIOR_PX, COR.grand);
+  const centros = enfeites(x0, x1, 30);
+  // Colunas atravessam os dois andares.
+  for (const xc of centros) {
+    for (const dx of [-13, 12]) {
+      const cx = (xc + dx) * COL_PX;
+      r(cx, topo, 6, INTERIOR_PX, 0x4a4250);
+      r(cx + 4, topo, 1, INTERIOR_PX, escurecer(0x4a4250, 0.7));
+    }
+  }
+  if (y === 0) {
+    r(px, topo + INTERIOR_PX - 4, w, 4, 0x7a1f2b); // tapete
+    for (const xc of centros) {
+      const cx = xc * COL_PX;
+      r(cx - 18, topo + INTERIOR_PX - 12, 36, 8, 0x6e6676); // fonte
+      r(cx - 14, topo + INTERIOR_PX - 14, 28, 2, 0x85b7eb);
+      r(cx - 1, topo + 8, 2, INTERIOR_PX - 22, 0xb5d4f4, 0.9);
+    }
+    portas(r, pontas, px, w, topo, INTERIOR_PX - 4, 12);
+    // Porteiro ao lado de cada porta.
+    for (const [i, xp] of [px + 15, px + w - 18].entries()) {
+      if (!pontas[i]) continue;
+      r(xp, topo + INTERIOR_PX - 14, 3, 10, 0x2c2c2a);
+      r(xp, topo + INTERIOR_PX - 17, 3, 3, 0xe0b48a);
+    }
+  } else {
+    r(px, topo, w, 4, COR.dourado); // cornija
+    for (const xc of centros) {
+      const cx = xc * COL_PX;
+      r(cx - 1, topo + 4, 2, 10, COR.dourado);
+      r(cx - 14, topo + 14, 28, 6, 0xfac775); // lustre
+      r(cx - 9, topo + 20, 18, 4, 0xef9f27);
+      r(cx - 20, topo + 14, 2, 4, 0xfac775);
+      r(cx + 18, topo + 14, 2, 4, 0xfac775);
     }
   }
 }

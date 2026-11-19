@@ -7,6 +7,7 @@
 
 import { ehElevador, ehEscada, MANUTENCAO_CARRO_TRI, MAX_CARROS, tipo } from './dados';
 import { Est, type Mundo, type Unidade } from './mundo';
+import { ehLobby } from './lobbies';
 
 /** Andares por tick. */
 export const VEL_ELEVADOR = 3;
@@ -86,7 +87,7 @@ export class Poco {
     this.paradasValidas.clear();
     for (let y = this.ymin; y <= this.ymax; y++) {
       // Expresso só para em lobbies e subsolos.
-      if (this.tipo !== 'elevador_expresso' || y < 0 || mundo.est(this.x, y) === Est.Lobby) this.paradasValidas.add(y);
+      if (this.tipo !== 'elevador_expresso' || y < 0 || paradaDeExpresso(mundo.est(this.x, y), y)) this.paradasValidas.add(y);
     }
   }
 
@@ -503,4 +504,9 @@ function novoPoco(u: Unidade, mundo: Mundo): Poco {
   const p = new Poco(u.uid, u.tipo, u.x, u.y, u.y + u.altura - 1, mundo);
   p.adicionarCarro();
   return p;
+}
+
+/** Expresso para no térreo com lobby (qualquer variante) e nos sky lobbies. */
+function paradaDeExpresso(c: number, y: number): boolean {
+  return y === 0 ? ehLobby(c) : c === Est.Lobby;
 }

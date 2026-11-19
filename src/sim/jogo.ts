@@ -12,7 +12,8 @@ import {
   type Plano,
 } from './construcao';
 import { ehElevador, tipo } from './dados';
-import { Est, LARGURA, Mundo, type SnapshotMundo } from './mundo';
+import { Est, ESTRUTURA_POR_TIPO, LARGURA, Mundo, type SnapshotMundo } from './mundo';
+import { ehLobby, VAZAO_PORTA } from './lobbies';
 import { Inquilinos, POPULACAO_EXIGE_RECICLAGEM, type CategoriaReceita, type NivelPreco } from './inquilinos';
 import { centro, Populacao, type Ambiente, type Entrada, type Estacionamento } from './pessoas';
 import { Progressao, type EventoProgressao, type Progresso } from './progressao';
@@ -566,6 +567,7 @@ export class Jogo {
     j.inquilinos.importar(s.inquilinos);
     j.progressao.importar(s.progressao);
     j.eventos.importar(s.eventos);
+    j.inquilinos.atualizarLobby(j.mundo);
     j.semAcesso = j.populacao.unidadesSemAcesso();
     j.semAcessoSet = new Set(j.semAcesso);
     j.roteador.limparCache();
@@ -581,7 +583,7 @@ export class Jogo {
   }
 
   manutencaoTrimestral(): number {
-    let total = this.transito.manutencaoTrimestral();
+    let total = this.transito.manutencaoTrimestral() + manutencaoLobbies(this.mundo);
     for (const u of this.mundo.unidades.values()) total += tipo(u.tipo).manutencao_tri;
     return total;
   }
@@ -659,26 +661,41 @@ function estacionamentos(m: Mundo): Estacionamento[] {
     .map((u) => ({ uid: u.uid, x: centro(u), y: u.y, vagas: tipo(u.tipo).capacidade }));
 }
 
-/** Entradas do prédio: pontas de cada trecho do térreo que tenha lobby, e estações de metrô. */
+/**
+ * Entradas do prédio: pontas de cada trecho do térreo que tenha lobby, e
+ * estações de metrô. A vazão das portas vem da melhor variante de lobby do trecho.
+ */
 function entradas(m: Mundo): Entrada[] {
   const r: Entrada[] = [];
   for (const u of m.unidades.values()) {
     if (u.tipo === 'metro') r.push({ x: centro(u), y: u.y + u.altura - 1, tipo: 'metro' });
   }
   let ini = -1;
-  let temLobby = false;
+  let vazao = 0;
   for (let x = 0; x <= LARGURA; x++) {
     const e = x < LARGURA ? m.est(x, 0) : Est.Vazio;
     if (e !== Est.Vazio) {
       if (ini < 0) ini = x;
-      if (e === Est.Lobby) temLobby = true;
+      if (ehLobby(e)) vazao = Math.max(vazao, VAZAO_PORTA[e]!);
     } else if (ini >= 0) {
-      if (temLobby) r.push({ x: ini + 0.5, y: 0, tipo: 'rua' }, { x: x - 0.5, y: 0, tipo: 'rua' });
+      if (vazao) r.push({ x: ini + 0.5, y: 0, tipo: 'rua', vazao }, { x: x - 0.5, y: 0, tipo: 'rua', vazao });
       ini = -1;
-      temLobby = false;
+      vazao = 0;
     }
   }
   return r;
+}
+
+/** Manutenção das células de lobby do térreo (variantes cobram por coluna). */
+function manutencaoLobbies(m: Mundo): number {
+  let total = 0;
+  for (let x = 0; x < LARGURA; x++) {
+    const e = m.est(x, 0);
+    if (!ehLobby(e)) continue;
+    const id = Object.keys(ESTRUTURA_POR_TIPO).find((k) => ESTRUTURA_POR_TIPO[k] === e)!;
+    total += tipo(id).manutencao_tri;
+  }
+  return total;
 }
 
 function paraBase64(b: Uint8Array): string {

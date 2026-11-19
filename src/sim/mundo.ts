@@ -7,13 +7,16 @@ export const ANDAR_MIN = -10; // B10
 export const ANDAR_MAX = 99; // andar 100
 export const NUM_ANDARES = ANDAR_MAX - ANDAR_MIN + 1;
 
-export const Est = { Vazio: 0, Piso: 1, Lobby: 2, Escavado: 3 } as const;
+export const Est = { Vazio: 0, Piso: 1, Lobby: 2, Escavado: 3, LobbyCorp: 4, Atrio: 5, Grand: 6 } as const;
 export type CodigoEstrutura = (typeof Est)[keyof typeof Est];
 
 export const ESTRUTURA_POR_TIPO: Record<string, CodigoEstrutura> = {
   piso: Est.Piso,
   lobby: Est.Lobby,
   sky_lobby: Est.Lobby,
+  lobby_corporativo: Est.LobbyCorp,
+  atrio: Est.Atrio,
+  grand_lobby: Est.Grand,
   escavacao: Est.Escavado,
 };
 

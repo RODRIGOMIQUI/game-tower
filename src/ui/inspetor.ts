@@ -150,6 +150,7 @@ export class Inspetor {
       ['Onde comer por perto', c.servicos],
       ['Nível de preço', c.preco],
       ['Pouco movimento', c.clientes],
+      ['Lobby do prédio', c.lobby ?? 0],
     ];
     const detalhes = itens
       .filter(([, v]) => Math.round(v) !== 0)

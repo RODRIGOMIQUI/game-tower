@@ -2,6 +2,9 @@ id,nome,categoria,estrela,largura_col,altura_andares,onde,custo,custo_extra,manu
 piso,Piso,estrutura,1,1,1,acima,500,0,0,nenhuma,0,0,0,0,nao,custo por coluna
 escavacao,Escavação,estrutura,1,1,1,subsolo,2000,0,0,nenhuma,0,0,0,0,nao,custo por coluna; libera célula de subsolo
 lobby,Lobby,estrutura,1,1,1,terreo,3000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; só no térreo
+lobby_corporativo,Lobby corporativo,estrutura,2,1,1,terreo,5000,0,300,nenhuma,0,0,0,1,nao,custo e manutenção por coluna; catracas: portas 40% mais rápidas; +5 de satisfação nos escritórios
+atrio,Átrio,estrutura,3,1,2,terreo,8000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; ocupa térreo e 1º andar; +10 de satisfação no prédio; mezanino aceita comida e lojas
+grand_lobby,Grand lobby,estrutura,4,1,2,terreo,15000,0,1500,nenhuma,0,0,0,1,nao,custo e manutenção por coluna; ocupa térreo e 1º andar; turistas; hotéis +15%; exigido pela Coroa
 sky_lobby,Sky lobby,estrutura,3,1,1,acima,4000,0,0,nenhuma,0,0,0,1,nao,custo por coluna; andar >= 15
 escada,Escada,transito,1,8,1,qualquer,5000,0,0,nenhuma,0,0,0,0,nao,Liga ao andar de cima. Ninguém sobe mais de 2 andares a pé
 escada_rolante,Escada rolante,transito,3,10,1,qualquer,20000,0,1000,nenhuma,0,0,0,1,nao,Liga ao andar de cima. Aceita até 6 andares seguidos

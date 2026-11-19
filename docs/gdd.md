@@ -60,6 +60,18 @@ do jogo é o **transporte vertical**: elevadores, escadas e baldeações.
   no térreo/subsolo, que seguem o limite do terreno).
 - O **lobby** só pode ser construído no térreo e em **sky lobbies**
   (qualquer andar ≥ 15, ★3).
+- Variantes de lobby do térreo (trocam umas pelas outras; efeitos valem com
+  um trecho contínuo de pelo menos 20 colunas):
+
+  | Variante | ★ | Custo/col | Manut./col/tri | Efeito |
+  |---|---|---|---|---|
+  | Lobby | 1 | 3.000 | — | portas de 20 pessoas/min |
+  | Lobby corporativo | 2 | 5.000 | 300 | portas de 28 pessoas/min; +5 de satisfação em escritórios |
+  | Átrio | 3 | 8.000 | — | ocupa térreo e 1º andar; +10 de satisfação em todas as unidades; comida e lojas no mezanino têm 50% mais visitantes |
+  | Grand lobby | 4 | 15.000 | 1.500 | ocupa térreo e 1º andar; portas de 28/min; 12 turistas/h (10h–18h) nas lojas, comida e Coroa; diárias de hotel +15%; exigido para construir a Coroa |
+
+  Quando as portas lotam, quem chega espera na calçada e se irrita depois
+  do tempo de paciência.
 - Subsolo exige escavação (custo extra por célula).
 - Unidades não se sobrepõem; poços de elevador/escada atravessam andares
   e reservam a coluna em todos eles.
@@ -231,10 +243,10 @@ imediatamente acima/abaixo. Overlay de ruído mostra isso em calor.
 | Nível | População | Requisitos extras | Desbloqueia |
 |---|---|---|---|
 | ★1 | — | — | piso, lobby, escada, elevador padrão, escritório, apartamento, lanchonete |
-| ★2 | 250 | — | hotel simples, limpeza, elevador de serviço, segurança |
-| ★3 | 1.000 | segurança construída | duplo, suíte, restaurante, loja, cinema, escada rolante, expresso, sky lobby, estacionamento, reciclagem, centro médico |
-| ★4 | 4.000 | centro médico · suíte · satisfação média ≥ 55 | salão de eventos, metrô, despacho por destino |
-| ★5 | 8.000 | metrô · **inspeção aprovada** | Coroa da Torre |
+| ★2 | 250 | — | hotel simples, limpeza, elevador de serviço, segurança, lobby corporativo |
+| ★3 | 1.000 | segurança construída | duplo, suíte, restaurante, loja, cinema, escada rolante, expresso, sky lobby, estacionamento, reciclagem, centro médico, átrio |
+| ★4 | 4.000 | centro médico · suíte · satisfação média ≥ 55 | salão de eventos, metrô, despacho por destino, grand lobby |
+| ★5 | 8.000 | metrô · **inspeção aprovada** | Coroa da Torre (exige grand lobby) |
 | **Lendária** | 12.000 | Coroa no topo (andares 98–100) + evento de inauguração bem-sucedido | fim da campanha; segue em modo livre |
 
 **População** = moradores + funcionários + hóspedes da noite atual.

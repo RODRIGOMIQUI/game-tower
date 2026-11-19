@@ -100,6 +100,14 @@ it.skipIf(!LONGO)('carreira com dinheiro real: ritmo das estrelas', () => {
       feitos.add('zonaE');
       r.push(...passosExpressos().slice(6), ...passosZona(56), ...passosZona(70));
       r.push({ nome: 'topo', custo: 60 * 16 * 500 + 20 * 4000, fazer: (j) => c(j, 'piso', TOPO.x0, 84, TOPO.x1, 99) && c(j, 'sky_lobby', 190, 97, TOPO.x1, 97) });
+      r.push({
+        nome: 'grand lobby',
+        custo: 30 * 15_000,
+        fazer: (j) => {
+          j.comando({ tipo: 'demolir', x0: 150, y0: 1, x1: 179, y1: 1 });
+          return c(j, 'grand_lobby', 150, 0, 179, 0);
+        },
+      });
       r.push({ nome: 'Coroa', custo: 3_000_000, fazer: (j) => c(j, 'coroa', TOPO.x0, 97) });
     }
     return r;

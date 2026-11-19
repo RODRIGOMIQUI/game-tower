@@ -1,5 +1,18 @@
 # Changelog
 
+## Não lançado
+
+### Jogo
+- Quatro lobbies no térreo: básico, corporativo (★2), átrio (★3) e grand
+  lobby (★4). O corporativo deixa as portas mais rápidas e melhora os
+  escritórios; o átrio ocupa dois andares, melhora a satisfação de todo o
+  prédio e tem mezanino para comida e lojas; o grand lobby traz turistas,
+  rende mais nos hotéis e passa a ser exigido para construir a Coroa.
+- As portas da rua têm vazão: com o lobby lotado, quem chega espera na
+  calçada.
+- Desfazer uma construção sobre piso ou lobby devolve o que havia antes, em
+  vez de deixar o terreno vazio.
+
 ## 1.0.0-beta.1
 
 Primeira versão jogável completa, pronta para beta fechado.

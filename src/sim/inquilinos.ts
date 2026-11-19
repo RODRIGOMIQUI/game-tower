@@ -12,6 +12,16 @@ import { centro, type Pessoa, type Populacao } from './pessoas';
 import { data } from './relogio';
 import type { Rng } from './rng';
 import type { Roteador } from './rotas';
+import {
+  BONUS_ATRIO,
+  BONUS_CORPORATIVO,
+  efeitosLobby,
+  ehMezanino,
+  MULT_HOTEL_GRAND,
+  MULT_MEZANINO,
+  TURISTAS_POR_HORA,
+  type EfeitosLobby,
+} from './lobbies';
 
 export type NivelPreco = 'baixo' | 'normal' | 'alto' | 'premium';
 
@@ -36,6 +46,8 @@ export interface Componentes {
   clientes: number;
   sujeira: number;
   reputacao: number;
+  /** Bônus das variantes de lobby (corporativo, átrio). */
+  lobby: number;
 }
 
 export interface EstadoUnidade {
@@ -159,6 +171,8 @@ export class Inquilinos {
   /** Bônus de satisfação da reputação (VIP) e até que dia vale. */
   reputacao = 0;
   private reputacaoAte = -1;
+  /** Variantes de lobby ativas (recalculado quando o prédio muda). */
+  lobby: EfeitosLobby = { corporativo: false, atrio: false, grand: false };
   private vipNoTrimestre = false;
   pendentes: EventoInquilinos[] = [];
 
@@ -178,15 +192,21 @@ export class Inquilinos {
       if (!m) continue;
       this.estados.set(u.uid, {
         uid: u.uid, tipo: u.tipo, situacao: m === 'cliente' ? 'ocupada' : 'vaga', preco: 'normal',
-        satisfacao: 70, componentes: { estresse: 0, ruido: 0, servicos: 0, preco: 0, clientes: 0, sujeira: 0, reputacao: 0 },
+        satisfacao: 70, componentes: { estresse: 0, ruido: 0, servicos: 0, preco: 0, clientes: 0, sujeira: 0, reputacao: 0, lobby: 0 },
         avisos: 0, desvalorizado: false, estresseClientes: 0, clientesHoje: 0, limpavel: false, sujaDesde: 0,
       });
     }
     this.versao++;
   }
 
-  /** Recalcula ruído e acesso a comida (depende só do prédio). */
+  /** Efeitos das variantes de lobby do térreo. */
+  atualizarLobby(mundo: Mundo): void {
+    this.lobby = efeitosLobby(mundo);
+  }
+
+  /** Recalcula ruído, acesso a comida e bônus de lobby (depende só do prédio). */
   atualizarVizinhanca(mundo: Mundo, roteador: Roteador, roteadorEquipe: Roteador): void {
+    this.atualizarLobby(mundo);
     const unidades = [...mundo.unidades.values()];
     const barulhentas = unidades.filter((u) => tipo(u.tipo).ruido_emite > 0);
     const comidas = unidades.filter((u) => tipo(u.tipo).categoria === 'comida');
@@ -226,6 +246,8 @@ export class Inquilinos {
       }
       e.componentes.servicos = servicos;
       e.componentes.preco = NIVEIS_PRECO[e.preco].satisfacao;
+      e.componentes.lobby =
+        (this.lobby.atrio ? BONUS_ATRIO : 0) + (this.lobby.corporativo && t.categoria === 'trabalho' ? BONUS_CORPORATIVO : 0);
 
       // Limpeza: a equipe precisa chegar ao quarto (pode usar elevador de serviço).
       if (t.categoria === 'hotel') {
@@ -245,7 +267,7 @@ export class Inquilinos {
   /** Satisfação esperada sem contar o estresse (usada para atrair inquilinos). */
   expectativa(e: EstadoUnidade): number {
     const c = e.componentes;
-    return clamp(90 - c.ruido + c.servicos + c.preco - c.sujeira + c.reputacao);
+    return clamp(90 - c.ruido + c.servicos + c.preco - c.sujeira + c.reputacao + c.lobby);
   }
 
   mudarPreco(uid: number, nivel: NivelPreco): boolean {
@@ -310,7 +332,8 @@ export class Inquilinos {
         this.pendentes.push({ tipo: 'vip_chegou', uid: u.uid });
       }
       e.situacao = 'hospedada';
-      this.caixa.creditar('hotel', Math.round(t.receita_valor * NIVEIS_PRECO[e.preco].mult));
+      const grand = this.lobby.grand ? MULT_HOTEL_GRAND : 1;
+      this.caixa.creditar('hotel', Math.round(t.receita_valor * NIVEIS_PRECO[e.preco].mult * grand));
       this.versao++;
     }
   }
@@ -341,9 +364,23 @@ export class Inquilinos {
       const faixa = faixas.find(([ini, fim]) => h >= ini && h < fim);
       if (!faixa) continue;
       const u = ctx.mundo.unidades.get(e.uid)!;
-      const fator = NIVEIS_PRECO[e.preco].demanda * (0.3 + 0.7 * (e.satisfacao / 100)) * (fimDeSemana ? 1.5 : 1);
+      const mezanino = ehMezanino(ctx.mundo, u.x, u.y) ? MULT_MEZANINO : 1;
+      const fator = NIVEIS_PRECO[e.preco].demanda * (0.3 + 0.7 * (e.satisfacao / 100)) * (fimDeSemana ? 1.5 : 1) * mezanino;
       const n = Math.round(faixa[2] * fator * (0.6 + ctx.rng.proximo() * 0.8));
       for (let i = 0; i < n; i++) ctx.populacao.visitar(u, h * 60 + ctx.rng.inteiro(0, 59), tick);
+    }
+    // Grand lobby: turistas passeiam pelas lojas, restaurantes e pela Coroa.
+    if (this.lobby.grand && h >= 10 && h < 18) {
+      const alvos: Unidade[] = [];
+      for (const e of this.estados.values()) {
+        if (VISITAS[e.tipo] && e.situacao === 'ocupada' && !ctx.semAcesso.has(e.uid)) alvos.push(ctx.mundo.unidades.get(e.uid)!);
+      }
+      if (alvos.length) {
+        const n = Math.round(TURISTAS_POR_HORA * (fimDeSemana ? 1.5 : 1));
+        for (let i = 0; i < n; i++) {
+          ctx.populacao.visitar(alvos[ctx.rng.inteiro(0, alvos.length - 1)]!, h * 60 + ctx.rng.inteiro(0, 59), tick);
+        }
+      }
     }
     // Festival de ano novo: movimento extra à noite em tudo que é de consumo.
     if (ctx.festival && h >= 18) {
@@ -449,7 +486,7 @@ export class Inquilinos {
       // Loja sem movimento: o lojista reclama.
       c.clientes = e.tipo === 'loja' && e.clientesHoje < 5 ? -20 : 0;
       e.clientesHoje = 0;
-      const hoje = clamp(100 - c.estresse * 0.6 - c.ruido + c.servicos + c.preco + c.clientes - c.sujeira + c.reputacao);
+      const hoje = clamp(100 - c.estresse * 0.6 - c.ruido + c.servicos + c.preco + c.clientes - c.sujeira + c.reputacao + c.lobby);
       e.satisfacao = e.satisfacao * 0.65 + hoje * 0.35;
     }
     this.versao++;
@@ -516,7 +553,11 @@ export class Inquilinos {
 
   importar(d: InquilinosSalvos): void {
     this.estados.clear();
-    for (const e of d.estados) this.estados.set(e.uid, structuredClone(e));
+    for (const e of d.estados) {
+      const c = structuredClone(e);
+      c.componentes.lobby ??= 0; // saves anteriores às variantes de lobby
+      this.estados.set(c.uid, c);
+    }
     this.versao = d.versao;
     this.creditoLimpeza = d.creditoLimpeza;
     this.reputacao = d.reputacao;

@@ -137,12 +137,12 @@ describe('Lendária', () => {
   it('Coroa no topo + inauguração bem-sucedida', () => {
     const j = carreira(5, 0.0001);
     construir(j, 'piso', 0, 0, 59, 99);
-    construir(j, 'lobby', 0, 0, 59, 0);
+    construir(j, 'grand_lobby', 0, 0, 59, 0);
     construir(j, 'sky_lobby', 40, 97, 59, 97);
     construir(j, 'elevador_expresso', 50, 0, 50, 97);
     for (let i = 0; i < 5; i++) j.comando({ tipo: 'carros', uid: j.mundo.unidadeEm(50, 0)!.uid, delta: 1 });
     construir(j, 'coroa', 0, 97);
-    construir(j, 'escritorio', 0, 1);
+    construir(j, 'escritorio', 0, 2);
     j.ocuparTodas();
     const ev = j.avancar(1440 - (j.tick % 1440));
     expect(tipos(ev)).toContain('inauguracao_agendada');

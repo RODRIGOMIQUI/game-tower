@@ -65,6 +65,9 @@ it.skipIf(!LONGO)('partida completa: ★1 até Lendária', () => {
       zona(j, 56);
       zona(j, 70);
       construir(j, 'sky_lobby', 190, 97, TOPO.x1, 97);
+      // A Coroa exige um grand lobby: libera o 1º andar de um trecho do térreo.
+      j.comando({ tipo: 'demolir', x0: 150, y0: 1, x1: 179, y1: 1 });
+      construir(j, 'grand_lobby', 150, 0, 179, 0);
       construir(j, 'coroa', TOPO.x0, 97);
     }
     registrar(j.avancar(1440));

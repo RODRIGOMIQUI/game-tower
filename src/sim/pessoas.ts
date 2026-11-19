@@ -99,6 +99,8 @@ export interface Pessoa {
   historico: string[];
   /** Já registrou no histórico a espera atual. */
   reclamou: boolean;
+  /** Tick em que começou a esperar na porta do lobby (0 = não está esperando). */
+  fila?: number;
 }
 
 /** Dados da ficha da pessoa (docs/gdd.md §5.4). */
@@ -128,6 +130,8 @@ export interface Entrada {
   x: number;
   y: number;
   tipo: 'rua' | 'metro';
+  /** Rua: pessoas por minuto que a porta deixa entrar. */
+  vazao?: number;
 }
 
 export interface Estacionamento {
@@ -192,6 +196,10 @@ export class Populacao implements Passageiros {
   readonly bloqueadas = new Set<number>();
   private proximoId = 1;
   private tickAtual = 0;
+  /** Entradas pela rua neste minuto, por porta. */
+  private usoPortas = new Map<Entrada, number>();
+  /** Lugares livres nas portas da rua neste minuto (Infinity sem portas de rua). */
+  private vagasPortas = Infinity;
   desistenciasHoje = 0;
 
   constructor(private amb: Ambiente) {}
@@ -370,6 +378,9 @@ export class Populacao implements Passageiros {
   passo(tick: number): void {
     this.tickAtual = tick;
     const minuto = tick % MIN_POR_DIA;
+    this.usoPortas.clear();
+    const ruas = this.amb.entradas.filter((e) => e.tipo === 'rua');
+    this.vagasPortas = ruas.length ? ruas.reduce((s, e) => s + (e.vazao ?? Infinity), 0) : Infinity;
     for (const p of this.pessoas.values()) {
       switch (p.estado) {
         case Estado.Fora:
@@ -383,7 +394,17 @@ export class Populacao implements Passageiros {
               if (prox === undefined || !this.irPara(p, { tipo: 'visita', uid: prox })) this.irPara(p, { tipo: 'fora' });
             } else this.irPara(p, p.tipo === 'visitante' ? { tipo: 'fora' } : { tipo: 'casa' });
           } else if (p.proximo < p.agenda.length && minuto >= p.agenda[p.proximo]!.minuto) {
-            this.executar(p, p.agenda[p.proximo++]!.acao);
+            const acao = p.agenda[p.proximo]!.acao;
+            if (p.estado === Estado.Fora && acao !== 'sair' && this.vagasPortas <= 0) {
+              this.esperarNaPorta(p, tick);
+              break;
+            }
+            if (p.fila) {
+              p.fila = 0;
+              p.reclamou = false;
+            }
+            p.proximo++;
+            this.executar(p, acao);
           }
           break;
         case Estado.Andando: {
@@ -416,6 +437,21 @@ export class Populacao implements Passageiros {
           break;
         case Estado.NoElevador:
           break;
+      }
+    }
+  }
+
+  /** Portas do lobby lotadas neste minuto: espera na calçada (e se irrita). */
+  private esperarNaPorta(p: Pessoa, tick: number): void {
+    if (!p.fila) {
+      p.fila = tick;
+      return;
+    }
+    if (tick - p.fila > PACIENCIA[p.tipo]) {
+      this.estressar(p, ESTRESSE_POR_TICK);
+      if (!p.reclamou) {
+        p.reclamou = true;
+        this.registrar(p, 'irritado: fila para entrar pelo lobby');
       }
     }
   }
@@ -532,7 +568,15 @@ export class Populacao implements Passageiros {
     const metros = entradas.filter((e) => e.tipo === 'metro');
     if (metros.length && rng.proximo() < CHANCE_METRO) return metros[rng.inteiro(0, metros.length - 1)]!;
     const ruas = entradas.filter((e) => e.tipo === 'rua');
-    if (ruas.length) return ruas[rng.inteiro(0, ruas.length - 1)]!;
+    if (ruas.length) {
+      // Prefere portas com lugar neste minuto.
+      const livres = ruas.filter((e) => (this.usoPortas.get(e) ?? 0) < (e.vazao ?? Infinity));
+      const lista = livres.length ? livres : ruas;
+      const e = lista[rng.inteiro(0, lista.length - 1)]!;
+      this.usoPortas.set(e, (this.usoPortas.get(e) ?? 0) + 1);
+      this.vagasPortas--;
+      return e;
+    }
     return metros[0] ?? null;
   }
 

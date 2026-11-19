@@ -1,6 +1,7 @@
 // Tutorial guiado no começo da carreira. Ver docs/gdd.md §11.
 // Cada passo avança sozinho quando o jogador faz o que foi pedido.
 import { Est, type Mundo } from '../sim/mundo';
+import { ehLobby } from '../sim/lobbies';
 import type { EstadoResumo } from '../worker/protocolo';
 
 interface Passo {
@@ -15,7 +16,7 @@ const PASSOS: Passo[] = [
     texto: 'Comece pelo <b>lobby</b>: tecla <kbd>L</kbd> e arraste ao longo do chão. É por ele que as pessoas entram.',
     feito: (m) => {
       let n = 0;
-      for (let x = 0; x < 360; x++) if (m.est(x, 0) === Est.Lobby) n++;
+      for (let x = 0; x < 360; x++) if (ehLobby(m.est(x, 0))) n++;
       return n >= 10;
     },
   },
