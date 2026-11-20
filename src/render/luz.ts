@@ -37,14 +37,14 @@ function texturaCanvas(w: number, h: number, desenhar: (c: CanvasRenderingContex
 function texturaCone(): Texture {
   return texturaCanvas(128, 64, (c) => {
     c.save();
-    c.scale(1, 0.75);
-    const g = c.createRadialGradient(64, 0, 0, 64, 0, 84);
+    // Raio = meia largura: a luz chega a zero nas laterais (sem borda reta).
+    const g = c.createRadialGradient(64, 0, 0, 64, 0, 64);
     g.addColorStop(0, 'rgba(255,255,255,0.95)');
     g.addColorStop(0.18, 'rgba(255,255,255,0.55)');
     g.addColorStop(0.55, 'rgba(255,255,255,0.18)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     c.fillStyle = g;
-    c.fillRect(0, 0, 128, 86);
+    c.fillRect(0, 0, 128, 64);
     c.restore();
     // Some suave perto do piso, sem borda dura.
     const v = c.createLinearGradient(0, 0, 0, 64);

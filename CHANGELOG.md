@@ -18,6 +18,9 @@
   brilho de telas, velas e cabines de elevador, sombra suave nos cantos
   das salas e sob as pessoas, noite mais escura e tom dourado no nascer e
   no pôr do sol. Salas vagas, sujas ou com pragas ficam apagadas.
+- Centro médico mais detalhado: recepção com balcão, computador, relógio e
+  cadeiras de espera; leitos hospitalares com cortina, soro e monitor
+  cardíaco (que brilha à noite); farmácia com armário de frascos e pia.
 
 ## 1.0.0-beta.1
 

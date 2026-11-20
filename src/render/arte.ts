@@ -370,20 +370,86 @@ const DESENHOS: Record<string, Desenho> = {
     p(w - 24, 6, 14, 14, C.azul); // brasão
     p(w - 20, 9, 6, 8, C.amarelo);
   },
-  centro_medico: (p, w, h) => {
+  centro_medico: (p, w, h, v) => {
     const c = h - 3;
-    p(8, 5, 10, 10, C.branco);
-    p(12, 6, 2, 8, C.vermelho);
-    p(9, 9, 8, 2, C.vermelho);
-    for (let i = 0; i < 4; i++) {
-      const x = 28 + i * 44;
-      p(x, c - 7, 26, 3, C.branco);
-      p(x, c - 4, 1, 4, C.metal);
-      p(x + 25, c - 4, 1, 4, C.metal);
-      p(x + 20, c - 9, 5, 2, C.branco);
-      p(x + 30, 3, 8, c - 3, 0x9fd8c0, 0.85); // cortina
+    // Piso de ladrilho clínico
+    for (let x = 0; x < w; x += 8) p(x, c, 4, 1, 0xc4d8d3);
+    // Faixa verde-água na parede
+    p(0, c - 12, w, 1, 0x9fd8c0);
+    // Recepção: cruz, relógio, balcão, cadeiras de espera e planta
+    p(5, 4, 12, 12, C.metal); // placa com a cruz
+    p(6, 5, 10, 10, C.branco);
+    p(10, 6, 2, 8, C.vermelho);
+    p(7, 9, 8, 2, C.vermelho);
+    p(20, 5, 6, 6, C.metalEscuro); // relógio
+    p(21, 6, 4, 4, C.branco);
+    p(22, 7, 1, 2, C.preto);
+    p(22, 8, 2, 1, C.preto);
+    p(4, c - 11, 18, 1, C.metal); // balcão
+    p(4, c - 10, 18, 10, 0x7fc4aa);
+    p(5, c - 8, 16, 1, 0x9fd8c0);
+    p(5, c - 4, 16, 1, 0x9fd8c0);
+    p(6, c - 15, 6, 4, C.preto); // computador da recepção
+    p(7, c - 14, 4, 2, C.tela);
+    p(16, c - 13, 4, 2, C.azul); // prancheta
+    for (let i = 0; i < 3; i++) {
+      const x = 25 + i * 5;
+      p(x, c - 6, 4, 2, C.azul);
+      p(x, c - 9, 1, 3, C.azul);
+      p(x + 1, c - 4, 1, 4, C.metalEscuro);
     }
+    planta(p, 41, c);
+    lampada(p, 16);
+    // Leitos com cortina, soro e monitor cardíaco
+    const mantas = [C.azul, 0x7fb8d8, 0x9fd8c0];
+    for (let i = 0; i < 3; i++) {
+      const x = 50 + i * 44;
+      p(x - 4, 2, 44, 1, C.metal); // trilho da cortina
+      p(x - 4, 3, 5, c - 4, 0x9fd8c0, 0.85); // cortina recolhida
+      p(x - 3, 3, 1, c - 4, 0x7fc4aa, 0.85);
+      // cama hospitalar
+      p(x + 6, c - 8, 26, 3, C.branco);
+      p(x + 6, c - 7, 20, 2, mantas[(i + v) % 3]!);
+      p(x + 27, c - 10, 5, 2, C.branco); // travesseiro
+      p(x + 31, c - 13, 2, 8, C.metal); // cabeceira
+      p(x + 6, c - 10, 1, 5, C.metal); // grade
+      p(x + 7, c - 5, 1, 5, C.metalEscuro);
+      p(x + 30, c - 5, 1, 5, C.metalEscuro);
+      p(x + 6, c - 1, 2, 1, C.preto); // rodinhas
+      p(x + 29, c - 1, 2, 1, C.preto);
+      // suporte de soro
+      p(x + 36, c - 22, 1, 22, C.metal);
+      p(x + 34, c - 22, 5, 1, C.metal);
+      p(x + 34, c - 21, 3, 5, 0xd8eef8, 0.9);
+      p(x + 35, c - 16, 1, 6, 0xd8eef8, 0.7);
+      p(x + 34, c, 5, 1, C.metalEscuro);
+      // monitor cardíaco na parede
+      p(x + 12, 7, 12, 8, C.preto);
+      p(x + 13, 8, 10, 6, C.tela);
+      p(x + 13, 11, 3, 1, C.verde);
+      p(x + 16, 9, 1, 3, C.verde);
+      p(x + 17, 11, 1, 2, C.verde);
+      p(x + 18, 11, 5, 1, C.verde);
+      if (i !== 1) lampada(p, x + 18);
+    }
+    // Farmácia: armário com frascos e pia
+    const fx = w - 26;
+    p(fx - 1, 4, 24, 16, C.metal);
+    p(fx, 5, 22, 14, 0xdde8e6);
+    p(fx, 12, 22, 1, C.metal);
+    p(fx + 11, 5, 1, 14, C.metal);
+    for (let i = 0; i < 8; i++) {
+      p(fx + 2 + (i % 4) * 5, i < 4 ? 8 : 15, 2, 3, [C.vermelho, C.amarelo, C.azul, C.verde, C.laranja][(i + v) % 5]!);
+    }
+    p(fx, c - 10, 22, 1, C.metal);
+    p(fx, c - 9, 22, 9, 0x7fc4aa); // bancada
+    p(fx + 4, c - 9, 8, 2, C.metal); // pia
+    p(fx + 7, c - 13, 1, 4, C.metalEscuro); // torneira
+    p(fx + 7, c - 13, 3, 1, C.metalEscuro);
+    p(fx + 15, c - 12, 4, 3, C.vermelho); // caixa de primeiros socorros
+    p(fx + 16, c - 11, 2, 1, C.branco);
   },
+
   reciclagem: (p, w, h) => {
     const c = h - 3;
     const cores = [C.verde, C.azul, C.amarelo, C.vermelho];
