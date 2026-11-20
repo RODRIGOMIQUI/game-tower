@@ -9,6 +9,7 @@ import { ehElevador, ehEscada, tipo } from '../sim/dados';
 import { ANDAR_MAX, ANDAR_MIN, Est, LARGURA, nomeAndar, type Mundo, type Unidade } from '../sim/mundo';
 import { ANDAR_PX, Camera, COL_PX, LAJE_PX, topoDoAndar, type Celula } from './camera';
 import { CamadaDinamica } from './dinamica';
+import { CamadaLuz, type LuzMundo } from './luz';
 import { COR, COR_CATEGORIA, corDoCeu, escurecer, escuridao, misturar } from './paleta';
 import type { Dinamico } from '../worker/protocolo';
 
@@ -17,6 +18,19 @@ const LARGURA_PX = LARGURA * COL_PX;
 const FUNDO_PX = -topoDoAndar(ANDAR_MIN - 1); // base do B10
 const TOPO_PX = topoDoAndar(ANDAR_MAX);
 const FAIXAS_CEU = 48;
+
+/** Cor da luz por categoria: escritórios mais frios, comida e moradia mais quentes. */
+const COR_LUZ: Partial<Record<string, number>> = {
+  trabalho: 0xe6efff,
+  servico: 0xe6f2ff,
+  comida: 0xffbf73,
+  moradia: 0xffcf8a,
+  hotel: 0xffcf8a,
+  comercio: 0xfff0d0,
+  lazer: 0xd9bcff,
+};
+const LUZ_PADRAO = 0xffe2a8;
+const LUZ_LOBBY = 0xffe6b0;
 
 const COR_INTERIOR: Record<number, number> = {
   [Est.Piso]: COR.interiorVazio,
@@ -44,6 +58,9 @@ export class Cena {
   private escuro = 0;
   private readonly rotulos = new Container();
   private readonly noite = new Graphics();
+  private readonly luz = new CamadaLuz();
+  /** Luminárias dos lobbies (sempre acesas). */
+  private luzesLobby: LuzMundo[] = [];
   private readonly grade = new Graphics();
   private readonly fantasma = new Graphics();
   private readonly dinamicaC = new Container();
@@ -69,7 +86,7 @@ export class Cena {
     this.dinamica = new CamadaDinamica(this.dinamicaC, app.renderer);
     this.sprites.cullableChildren = true;
     // O brilho fica acima da camada de noite: janelas acesas não escurecem.
-    this.mundoTopo.addChild(this.brilho, this.grade, this.fantasma);
+    this.mundoTopo.addChild(this.luz.raiz, this.brilho, this.grade, this.fantasma);
     this.fundo = new Fundo(app.renderer);
     app.stage.addChild(this.ceu, this.fundo.raiz, this.fogos, this.mundoBase, this.noite, this.mundoTopo);
     this.desenharTerreno();
@@ -105,6 +122,11 @@ export class Cena {
       c.scale.set(escala);
     }
     if (this.escalaGrade !== escala) this.desenharGrade();
+    const detalhada = escala >= 1;
+    if (this.luz.detalhada !== detalhada) {
+      this.luz.detalhada = detalhada;
+      this.redesenharBrilho();
+    }
   }
 
   mostrarGrade(v: boolean): void {
@@ -174,14 +196,20 @@ export class Cena {
       this.escuro = e;
       this.redesenharBrilho();
     }
+    this.luz.intensidade(e);
     this.noite.clear();
-    if (e > 0) this.noite.rect(0, 0, w, h).fill({ color: 0x0a0c20, alpha: e * 0.35 });
+    if (e > 0) this.noite.rect(0, 0, w, h).fill({ color: 0x0a0c20, alpha: e * 0.58 });
+    // Hora dourada: leve tom quente no nascer e no pôr do sol.
+    const hora = m / 60;
+    const dourado = Math.max(0, 1 - Math.abs(hora - 17.6) / 1.4, 1 - Math.abs(hora - 6.4) / 1.1);
+    if (dourado > 0) this.noite.rect(0, 0, w, h).fill({ color: 0xff9a4a, alpha: dourado * 0.1 });
   }
 
   // ------------------------------------------------------------------ mundo
 
   desenharMundo(m: Mundo): void {
     const g = this.estrutura.clear();
+    const luzesLobby: LuzMundo[] = [];
     for (let y = ANDAR_MIN; y <= ANDAR_MAX; y++) {
       const topo = topoDoAndar(y);
       let x = 0;
@@ -194,10 +222,14 @@ export class Cena {
         let fim = x + 1;
         while (fim < LARGURA && m.est(fim, y) === c) fim++;
         desenharTrecho(g, m, c, x, fim, y);
+        if (c === Est.Lobby || c === Est.LobbyCorp || c === Est.Atrio || c === Est.Grand) {
+          for (let xc = x + 3; xc < fim - 1; xc += 6) luzesLobby.push({ x: xc * COL_PX, y: topo + 3, tipo: 0, cor: LUZ_LOBBY });
+        }
         x = fim;
       }
     }
 
+    this.luzesLobby = luzesLobby;
     this.mundoAtual = m;
     // Mundo novo (construção ou save carregado): alertas e situações chegam de
     // novo no próximo quadro. As chaves deles podem repetir as de outro jogo.
@@ -335,6 +367,25 @@ export class Cena {
       if (s && (s.avisos > 0 || s.satisfacao < 40) && s.situacao !== 0) desenharMarcador(gm, u, s);
     }
     this.redesenharBrilho();
+    this.redesenharLuzes();
+  }
+
+  /** Luzes das unidades em uso (vagas, sujas e com pragas ficam apagadas) e dos lobbies. */
+  private redesenharLuzes(): void {
+    const m = this.mundoAtual;
+    if (!m) return;
+    const luzes: LuzMundo[] = [...this.luzesLobby];
+    for (const u of m.unidades.values()) {
+      if (ehElevador(u.tipo) || ehEscada(u.tipo)) continue;
+      const s = this.situacoes.get(u.uid);
+      if (s && (s.situacao === 0 || s.situacao === 3 || s.situacao === 4)) continue;
+      const r = retanguloUnidade(u);
+      const cor = COR_LUZ[tipo(u.tipo).categoria] ?? LUZ_PADRAO;
+      for (const l of this.arte.luzes(u.tipo, u.largura, u.altura, u.uid)) {
+        luzes.push({ x: r.x + l.x, y: r.y + l.y, tipo: l.tipo, cor });
+      }
+    }
+    this.luz.definir(luzes);
   }
 
   /** Janelas acesas à noite nas unidades ocupadas (acima da camada de noite). */
@@ -347,8 +398,13 @@ export class Cena {
       const s = this.situacoes.get(u.uid);
       if (!s || s.situacao === 0 || s.situacao === 3 || s.situacao === 4) continue;
       const r = retanguloUnidade(u);
-      g.rect(r.x + 1, r.y + 2, r.w - 2, r.h - 4).fill({ color: COR.janelaNoite, alpha: 0.22 * a });
-      g.rect(r.x + 1, r.y + 2, r.w - 2, 3).fill({ color: COR.janelaNoite, alpha: 0.35 * a }); // luz do teto
+      if (this.luz.detalhada) {
+        // Luz ambiente fraca; o grosso da iluminação vem da CamadaLuz.
+        g.rect(r.x + 1, r.y + 2, r.w - 2, r.h - 4).fill({ color: COR.janelaNoite, alpha: 0.1 * a });
+      } else {
+        // Zoom afastado: sem luzes individuais, a janela inteira acende.
+        g.rect(r.x + 1, r.y + 2, r.w - 2, r.h - 4).fill({ color: COR.janelaNoite, alpha: 0.3 * a });
+      }
     }
   }
 
@@ -401,6 +457,7 @@ export class Cena {
     // Céu e noite acompanham redimensionamentos mesmo com o jogo pausado (sai cedo se nada mudou).
     this.atualizarCeu(this.minutoAtual);
     this.dinamica.desenhar(agora, m, this.camera.escala, this.areaVisivel());
+    this.luz.definirCabines(this.dinamica.cabines);
     this.fundo.atualizar(
       this.minutoAtual, agora, this.larguraTela, this.alturaTela, this.camera.oy, this.camera.ox, this.camera.escala,
     );

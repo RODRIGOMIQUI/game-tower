@@ -130,6 +130,15 @@ nada a licenciar, e o visual muda junto com o código.
   com paralaxe e janelas que acendem à noite. Unidades ocupadas ganham luz
   acesa à noite (desenhada acima da camada de escuridão).
 
+**Iluminação** (`src/render/luz.ts`): a pixel art continua nítida e uma
+camada de luzes suaves em modo aditivo fica acima do escurecimento da noite.
+As fontes saem da própria arte (cúpulas `#FFF2B0` no teto viram cones; velas
+e telas viram brilhos), com cor por categoria (escritórios frios, comida e
+moradia quentes). As texturas das unidades têm oclusão ambiente em degraus
+(sob a laje e nas paredes) e as pessoas, sombra de contato. No zoom
+afastado (< 1×) as luzes individuais saem e a sala inteira acende, para não
+pesar com milhares de unidades.
+
 **Áudio** (`src/audio/`), todo WebAudio, liberado no primeiro clique/tecla:
 - Trilha generativa original de jazz suave/bossa: piano elétrico (FM), baixo,
   chocalho e vibrafone esparso, em 4 progressões que trocam de tom; à noite

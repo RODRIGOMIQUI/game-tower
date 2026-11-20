@@ -3,6 +3,7 @@
 // unidades iguais. Escala inteira com "nearest": nítida em qualquer zoom.
 import { Graphics, Rectangle, type Renderer, type Texture } from 'pixi.js';
 import { ANDAR_PX, COL_PX, LAJE_PX } from './camera';
+import type { PontoLuz } from './luz';
 
 export type Variante = 'normal' | 'vaga' | 'suja' | 'pragas';
 
@@ -17,6 +18,12 @@ const C = {
   vermelho: 0xc8483f, azul: 0x4a78b8, amarelo: 0xe8c547, rosa: 0xe89ab0, roxo: 0x8e6bb8,
   laranja: 0xe38a4b, pele: 0xe0b48a, concreto: 0x8c8f96, concretoEscuro: 0x6e7178, ouro: 0xd8b04a,
 };
+
+/** Cor das cúpulas de luminária e velas: a fábrica as reconhece como fontes de luz. */
+const LUZ_QUENTE = 0xfff2b0;
+const SOMBRA = 0x0a0c20;
+const OCLUSAO_TETO = [0.22, 0.12, 0.05];
+const OCLUSAO_LADO = [0.18, 0.09, 0.04];
 
 /** Paredes de fundo e piso por tipo. */
 const FUNDO: Record<string, [number, number]> = {
@@ -42,6 +49,8 @@ const FUNDO: Record<string, [number, number]> = {
 
 export class FabricaArte {
   private readonly cache = new Map<string, Texture>();
+  /** Luzes de cada desenho (sem a variante: só a versão normal acende). */
+  private readonly luzesCache = new Map<string, PontoLuz[]>();
 
   constructor(private readonly renderer: Renderer) {}
 
@@ -54,8 +63,13 @@ export class FabricaArte {
     const w = largura * COL_PX;
     const h = altura * ANDAR_PX - LAJE_PX;
     const g = new Graphics();
+    const luzes: PontoLuz[] = [];
     const p: Pincel = (x, y, ww, hh, cor, alpha = 1) => {
-      if (ww > 0 && hh > 0) g.rect(Math.round(x), Math.round(y), Math.round(ww), Math.round(hh)).fill({ color: cor, alpha });
+      if (!(ww > 0 && hh > 0)) return;
+      g.rect(Math.round(x), Math.round(y), Math.round(ww), Math.round(hh)).fill({ color: cor, alpha });
+      // Luminárias, velas e telas viram fontes de luz (luz.ts).
+      if (cor === LUZ_QUENTE) luzes.push(y < 8 ? { x: x + ww / 2, y: y + hh, tipo: 0 } : { x: x + ww / 2, y: y + hh / 2, tipo: 1 });
+      else if (cor === C.tela && ww * hh >= 4) luzes.push({ x: x + ww / 2, y: y + hh / 2, tipo: 2 });
     };
     const [parede, chao] = FUNDO[tipo] ?? [0xb0b6c0, 0x7f8794];
     p(0, 0, w, h, parede);
@@ -81,6 +95,14 @@ export class FabricaArte {
       p(0, 0, w, h, 0x6b7a3a, 0.4);
       for (let i = 0; i < w / 5; i++) p(2 + i * 5, h - 4 - ((i * 7) % 3) * 4, 2, 1, C.preto);
     }
+    // Oclusão ambiente em degraus (combina com a pixel art): o canto sob a
+    // laje e as paredes laterais recebem menos luz.
+    OCLUSAO_TETO.forEach((a, i) => p(0, 2 + i * 2, w, 2, SOMBRA, a));
+    OCLUSAO_LADO.forEach((a, i) => {
+      p(i * 2, 0, 2, h, SOMBRA, a);
+      p(w - 2 - i * 2, 0, 2, h, SOMBRA, a);
+    });
+    p(0, h - 3, w, 1, SOMBRA, 0.18); // contato com o piso
     // Moldura
     p(0, 0, 1, h, escurecer(parede, 0.6));
     p(w - 1, 0, 1, h, escurecer(parede, 0.6));
@@ -88,7 +110,24 @@ export class FabricaArte {
     tex.source.scaleMode = 'nearest';
     g.destroy();
     this.cache.set(chave, tex);
+    if (variante === 'normal') this.luzesCache.set(`${tipo}:${largura}:${altura}:${v}`, luzes);
     return tex;
+  }
+
+  /**
+   * Fontes de luz do interior (px relativos à unidade). Unidades sem
+   * luminária desenhada recebem cones distribuídos pelo teto.
+   */
+  luzes(tipo: string, largura: number, altura: number, semente: number): readonly PontoLuz[] {
+    const chave = `${tipo}:${largura}:${altura}:${semente % 3}`;
+    if (!this.luzesCache.has(chave)) this.unidade(tipo, largura, altura, 'normal', semente);
+    const l = this.luzesCache.get(chave)!;
+    if (!l.some((p) => p.tipo === 0)) {
+      const w = largura * COL_PX;
+      const n = Math.max(1, Math.round(w / 48));
+      for (let i = 0; i < n; i++) l.push({ x: ((i + 0.5) * w) / n, y: 3, tipo: 0 });
+    }
+    return l;
   }
 
   destruir(): void {

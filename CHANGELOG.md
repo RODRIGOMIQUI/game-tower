@@ -13,6 +13,12 @@
 - Desfazer uma construção sobre piso ou lobby devolve o que havia antes, em
   vez de deixar o terreno vazio.
 
+### Visual
+- Iluminação dinâmica sobre a pixel art: cones de luz das luminárias,
+  brilho de telas, velas e cabines de elevador, sombra suave nos cantos
+  das salas e sob as pessoas, noite mais escura e tom dourado no nascer e
+  no pôr do sol. Salas vagas, sujas ou com pragas ficam apagadas.
+
 ## 1.0.0-beta.1
 
 Primeira versão jogável completa, pronta para beta fechado.

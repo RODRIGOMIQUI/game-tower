@@ -45,6 +45,8 @@ function gerarAtlas(renderer: Renderer): AtlasPessoas {
   const corpo = (ox: number, oy: number, roupa: number, pele: number, calca: number, cabelo: number, quadro: number, balao: number, vip: boolean) => {
     const px = ox + 1;
     const base = oy + CEL_A;
+    // sombra de contato no piso (as pernas são desenhadas por cima)
+    g.rect(px - 1, base - 1, 7, 1).fill({ color: 0x0a0c20, alpha: 0.35 });
     // pernas: parado (0) ou passo A/B (1/2)
     r(px + (quadro === 1 ? 0 : 1), base - 4, 1, 4, calca);
     r(px + (quadro === 2 ? 4 : 3), base - 4, 1, 4, calca);
@@ -118,6 +120,8 @@ export class CamadaDinamica {
   private readonly atlas: AtlasPessoas;
   private readonly fogo = new Graphics();
   private focos: number[] = [];
+  /** Cabines visíveis no último quadro: [x, y, w, h] em px de mundo (para a luz). */
+  readonly cabines: number[] = [];
   private anterior: Quadro | null = null;
   private atual: Quadro | null = null;
   private indiceAnterior = new Map<number, number>();
@@ -226,6 +230,7 @@ export class CamadaDinamica {
   desenhar(agora: number, mundo: Mundo, escala: number, visivel: { x0: number; y0: number; x1: number; y1: number }): void {
     const q = this.atual;
     const gc = this.carros.clear();
+    this.cabines.length = 0;
     if (!q) return;
     const a = this.anterior;
     const intervalo = a ? Math.max(1, q.t - a.t) : 1;
@@ -248,6 +253,7 @@ export class CamadaDinamica {
       const y = topoDoAndar(pos) + 2;
       const h = INTERIOR_PX - 2;
       if (x > visivel.x1 || x + w < visivel.x0 || y > visivel.y1 || y + h < visivel.y0) continue;
+      this.cabines.push(x, y, w, h);
       // Cabine: luz interna, cabeças dos passageiros e portas.
       gc.rect(x, y, w, h).fill(0xfff6dc);
       const n = Math.min(Math.round(carga), 12);
